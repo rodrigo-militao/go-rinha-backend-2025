@@ -2,7 +2,7 @@ package main
 
 import (
 	"rinha-golang/internal/config"
-	"rinha-golang/internal/config/infra/http"
+	"rinha-golang/internal/infra/http"
 )
 
 func main() {
