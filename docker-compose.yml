@@ -25,6 +25,8 @@ services:
     networks:
       - backend
       - payment-processor
+    volumes:
+      - redis-socket:/tmp
     environment:
       - LISTEN_ADDR=:8080
       - REDIS_URL=redis:6379
@@ -46,6 +48,9 @@ services:
     image: redis:7-alpine
     container_name: redis
     hostname: redis
+    volumes:
+      - redis-socket:/tmp
+    command: redis-server --unixsocket /tmp/redis.sock --unixsocketperm 777
     networks:
       - backend
     healthcheck:
@@ -64,3 +69,6 @@ networks:
     driver: bridge
   payment-processor:
     external: true
+
+volumes:
+  redis-socket:

@@ -12,7 +12,8 @@ import (
 
 func StartServer(cfg config.Config) {
 	redisClient := redis.NewClient(&redis.Options{
-		Addr: cfg.RedisURL,
+		Network: "unix",
+		Addr:    "/tmp/redis.sock",
 	})
 
 	paymentRepo := redis_impl.NewRedisPaymentRepository(redisClient)
