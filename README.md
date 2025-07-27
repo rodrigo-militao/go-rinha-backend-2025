@@ -99,6 +99,5 @@ O projeto segue uma estrutura baseada em princípios de Clean Architecture para 
 
 ## 👤 Autor
 
-**[Rodrigo Militão]**
-- x: [@RodrigoMilitao8](https://x.com/RodrigoMilitao8)
+**Rodrigo Militão**
 - LinkedIn: [rodrigo-militao](https://linkedin.com/in/rodrigo-militao)
