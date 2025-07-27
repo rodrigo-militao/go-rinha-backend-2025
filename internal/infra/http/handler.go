@@ -1,12 +1,13 @@
 package http
 
 import (
-	"encoding/json"
 	"log"
 	"net/http"
 	"rinha-golang/internal/application"
 	"rinha-golang/internal/domain"
 	"time"
+
+	json "github.com/json-iterator/go"
 
 	"github.com/google/uuid"
 )

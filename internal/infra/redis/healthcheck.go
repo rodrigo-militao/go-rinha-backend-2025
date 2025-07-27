@@ -2,11 +2,12 @@ package redis
 
 import (
 	"context"
-	"encoding/json"
 	"net/http"
 	"rinha-golang/internal/config"
 	"sync/atomic"
 	"time"
+
+	json "github.com/json-iterator/go"
 
 	"github.com/redis/go-redis/v9"
 )

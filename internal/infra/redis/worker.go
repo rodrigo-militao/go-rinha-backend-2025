@@ -3,12 +3,13 @@ package redis
 import (
 	"bytes"
 	"context"
-	"encoding/json"
 	"fmt"
 	"log"
 	"net/http"
 	"rinha-golang/internal/domain"
 	"time"
+
+	json "github.com/json-iterator/go"
 
 	"github.com/redis/go-redis/v9"
 )
