@@ -1,39 +1,23 @@
 package http
 
 import (
-	"context"
-	"net/http"
 	"rinha-golang/internal/application"
-	"rinha-golang/internal/config"
-	redis_impl "rinha-golang/internal/infra/redis"
 
-	"github.com/redis/go-redis/v9"
+	"github.com/buaazp/fasthttprouter"
+	"github.com/valyala/fasthttp"
 )
 
-func StartServer(cfg config.Config) {
-	redisClient := redis.NewClient(&redis.Options{
-		Network: "unix",
-		Addr:    "/tmp/redis.sock",
-	})
-
-	paymentRepo := redis_impl.NewRedisPaymentRepository(redisClient)
-	processPaymentUC := &application.ProcessPaymentUseCase{Repo: paymentRepo}
-	getSummaryUC := &application.GetSummaryUseCase{Repo: paymentRepo}
+func SetupRoutes(
+	processPaymentUC *application.ProcessPaymentUseCase,
+	getSummaryUC *application.GetSummaryUseCase) fasthttp.RequestHandler {
 
 	handler := &Handler{ProcessPaymentUC: processPaymentUC, GetSummaryUC: getSummaryUC}
 
-	healthCheck := redis_impl.NewHealthCheckService(redisClient, cfg)
-	healthCheck.Start()
-	for i := 0; i < cfg.Workers; i++ {
-		worker := &redis_impl.Worker{Client: redisClient, Health: healthCheck, Repo: paymentRepo, WorkerNum: i}
-		go worker.Start(context.Background())
-	}
+	router := fasthttprouter.New()
+	router.POST("/payments", handler.HandlePayments)
+	router.POST("/purge-payments", handler.PurgePayments)
+	router.GET("/payments-summary", handler.HandleSummary)
+	router.GET("/health", handler.HandleHealth)
 
-	mux := http.NewServeMux()
-	mux.HandleFunc("/payments", handler.HandlePayments)
-	mux.HandleFunc("/payments-summary", handler.HandleSummary)
-	mux.HandleFunc("/purge-payments", handler.PurgePayments)
-	mux.HandleFunc("/health", handler.HandleHealth)
-
-	http.ListenAndServe(cfg.ListenAddr, mux)
+	return router.Handler
 }

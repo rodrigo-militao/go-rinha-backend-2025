@@ -69,7 +69,7 @@ func (w *Worker) processPayment(ctx context.Context, payment domain.Payment, pro
 	}
 
 	body := map[string]interface{}{
-		"correlationId": payment.CorrelationId.String(),
+		"correlationId": payment.CorrelationId,
 		"amount":        payment.Amount,
 		"requestedAt":   payment.RequestedAt.Format(time.RFC3339Nano),
 	}

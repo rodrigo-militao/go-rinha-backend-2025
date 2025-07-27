@@ -2,14 +2,13 @@ package http
 
 import (
 	"log"
-	"net/http"
 	"rinha-golang/internal/application"
 	"rinha-golang/internal/domain"
 	"time"
 
 	json "github.com/json-iterator/go"
 
-	"github.com/google/uuid"
+	"github.com/valyala/fasthttp"
 )
 
 type Handler struct {
@@ -22,45 +21,36 @@ type paymentRequest struct {
 	Amount        float64 `json:"amount"`
 }
 
-func (h *Handler) HandlePayments(w http.ResponseWriter, r *http.Request) {
+func (h *Handler) HandlePayments(ctx *fasthttp.RequestCtx) {
 	var req paymentRequest
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		log.Printf("[Handler] Invalid body: %v", err)
-		http.Error(w, "invalid body", http.StatusBadRequest)
-		return
-	}
-	id, err := uuid.Parse(req.CorrelationId)
-	if err != nil {
-		log.Printf("[Handler] Invalid correlationId: %v", err)
-		http.Error(w, "invalid correlationId", http.StatusBadRequest)
+	if err := json.Unmarshal(ctx.PostBody(), &req); err != nil {
+		ctx.Error("invalid body", fasthttp.StatusBadRequest)
 		return
 	}
 	if req.Amount <= 0 {
-		log.Printf("[Handler] Invalid amount: %v", req.Amount)
-		http.Error(w, "amount must be > 0", http.StatusBadRequest)
+		ctx.Error("invalid body", fasthttp.StatusBadRequest)
 		return
 	}
+
 	payment := domain.Payment{
-		CorrelationId: id,
+		CorrelationId: req.CorrelationId,
 		Amount:        req.Amount,
 		RequestedAt:   time.Now().UTC(),
 	}
 
-	err = h.ProcessPaymentUC.Execute(r.Context(), payment)
+	err := h.ProcessPaymentUC.Execute(ctx, payment)
 	if err != nil {
 		log.Printf("[Handler] Failed to enqueue payment: %v", err)
-		http.Error(w, "failed to enqueue payment", http.StatusInternalServerError)
+		ctx.Error("failed to process payment", fasthttp.StatusServiceUnavailable)
 		return
 	}
 
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(http.StatusCreated)
-
+	ctx.SetStatusCode(fasthttp.StatusCreated)
 }
 
-func (h *Handler) HandleSummary(w http.ResponseWriter, r *http.Request) {
-	fromStr := r.URL.Query().Get("from")
-	toStr := r.URL.Query().Get("to")
+func (h *Handler) HandleSummary(ctx *fasthttp.RequestCtx) {
+	fromStr := string(ctx.QueryArgs().Peek("from"))
+	toStr := string(ctx.QueryArgs().Peek("to"))
 	var from, to *time.Time
 
 	if fromStr != "" {
@@ -78,27 +68,26 @@ func (h *Handler) HandleSummary(w http.ResponseWriter, r *http.Request) {
 
 	summary, err := h.GetSummaryUC.Execute(from, to)
 	if err != nil {
-		log.Printf("[Handler] Failed to get summary: %v", err)
-		http.Error(w, "failed to get summary", http.StatusInternalServerError)
+		ctx.Error("failed to get summary", fasthttp.StatusInternalServerError)
 		return
 	}
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(http.StatusOK)
 
-	if err := json.NewEncoder(w).Encode(summary); err != nil {
-		log.Printf("[Handler] Failed to encode summary: %v", err)
-		http.Error(w, "failed to encode summary", http.StatusInternalServerError)
+	ctx.SetContentType("application/json")
+	ctx.SetStatusCode(fasthttp.StatusOK)
+
+	if err := json.NewEncoder(ctx).Encode(summary); err != nil {
+		log.Printf("Failed to encode summary: %v", err)
 	}
 }
 
-func (h *Handler) HandleHealth(w http.ResponseWriter, r *http.Request) {
-	w.WriteHeader(http.StatusOK)
-	w.Write([]byte("ok"))
+func (h *Handler) HandleHealth(ctx *fasthttp.RequestCtx) {
+	ctx.SetStatusCode(fasthttp.StatusOK)
+	ctx.Write([]byte("ok"))
 }
 
-func (h *Handler) PurgePayments(w http.ResponseWriter, r *http.Request) {
-	h.ProcessPaymentUC.PurgePayments(r.Context())
+func (h *Handler) PurgePayments(ctx *fasthttp.RequestCtx) {
+	h.ProcessPaymentUC.PurgePayments(ctx)
 
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(http.StatusOK)
+	ctx.SetContentType("application/json")
+	ctx.SetStatusCode(fasthttp.StatusOK)
 }

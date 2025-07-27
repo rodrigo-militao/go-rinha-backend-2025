@@ -8,7 +8,6 @@ import (
 
 	json "github.com/json-iterator/go"
 
-	"github.com/google/uuid"
 	"github.com/redis/go-redis/v9"
 )
 
@@ -31,7 +30,7 @@ func (r *RedisPaymentRepository) AddToStream(ctx context.Context, payment domain
 
 func (r *RedisPaymentRepository) StorePayment(ctx context.Context, payment domain.Payment) error {
 	paymentData := map[string]interface{}{
-		"correlationId": payment.CorrelationId.String(),
+		"correlationId": payment.CorrelationId,
 		"amount":        payment.Amount,
 		"processor":     payment.Processor,
 		"requestedAt":   payment.RequestedAt.Format(time.RFC3339Nano),
@@ -40,7 +39,7 @@ func (r *RedisPaymentRepository) StorePayment(ctx context.Context, payment domai
 	if err != nil {
 		return fmt.Errorf("failed to marshal payment data: %w", err)
 	}
-	return r.client.HSet(ctx, PAYMENTS_HASH, payment.CorrelationId.String(), paymentJSON).Err()
+	return r.client.HSet(ctx, PAYMENTS_HASH, payment.CorrelationId, paymentJSON).Err()
 }
 
 func (r *RedisPaymentRepository) GetAllPayments(ctx context.Context) ([]domain.Payment, error) {
@@ -65,7 +64,7 @@ func (r *RedisPaymentRepository) GetAllPayments(ctx context.Context) ([]domain.P
 }
 
 func parsePaymentFromData(data map[string]interface{}) (domain.Payment, error) {
-	correlationIdStr, ok := data["correlationId"].(string)
+	correlationId, ok := data["correlationId"].(string)
 	if !ok {
 		return domain.Payment{}, fmt.Errorf("invalid correlationId")
 	}
@@ -80,10 +79,6 @@ func parsePaymentFromData(data map[string]interface{}) (domain.Payment, error) {
 	requestedAtStr, ok := data["requestedAt"].(string)
 	if !ok {
 		return domain.Payment{}, fmt.Errorf("invalid requestedAt")
-	}
-	correlationId, err := uuid.Parse(correlationIdStr)
-	if err != nil {
-		return domain.Payment{}, fmt.Errorf("failed to parse correlationId: %w", err)
 	}
 	requestedAt, err := time.Parse(time.RFC3339Nano, requestedAtStr)
 	if err != nil {
