@@ -8,13 +8,13 @@ Esta é a minha submissão para a 3ª edição da Rinha de Backend, desenvolvida
 - **Cache / Banco de Dados de Estado:** Redis 7
 - **Fila de Mensagens:** Redis 7 (usando Listas)
 - **Load Balancer:** Nginx
-- **Ferramentas:** Docker & Docker Compose, k6, `json-iterator/go`
+- **Ferramentas:** Docker & Docker Compose, k6
 
 ## 🏛️ Arquitetura
 
 A arquitetura escolhida foi um sistema **assíncrono** projetado para alta vazão e baixa latência na API, com o Redis no centro de todas as operações de estado e mensageria.
 
-- **Nginx:** Atua como Reverse Proxy e Load Balancer (`least_conn`), distribuindo as requisições para duas instâncias da aplicação Go.
+- **Nginx:** Atua como Reverse Proxy e Load Balancer (`round_robin`), distribuindo as requisições para duas instâncias da aplicação Go.
 - **Aplicação Go:** Duas instâncias independentes. A API (`POST /payments`) é extremamente leve: sua única responsabilidade é publicar o trabalho em uma fila no Redis.
 - **Fila de Trabalho (Redis Lists):** Uma lista (`payments_queue`) serve como uma fila de trabalho central. O padrão `LPUSH`/`BLPOP` garante que cada trabalho seja pego por apenas um worker.
 - **Workers:** Um pool de `goroutines` em cada instância da aplicação consome os trabalhos da fila em paralelo. Cada worker é responsável pela lógica de negócio: idempotência (via `SetNX`), circuit breaking e a comunicação com os processadores de pagamento externos.
