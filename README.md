@@ -33,7 +33,7 @@ graph TD
     end
 
     subgraph "Processamento Assíncrono com Redis"
-        C1 -- LPUSH --> D{Redis (Fila de Trabalho)};
+        C1 -- LPUSH --> D -> Redis (Fila de Trabalho);
         C2 -- LPUSH --> D;
         D -- BLPOP --> E1(Worker Pool - App 1);
         D -- BLPOP --> E2(Worker Pool - App 2);
@@ -63,6 +63,6 @@ graph TD
 
 ## 👤 Autor
 
-**[Seu Nome]**
-- X: [@seu-user](https://x.com/RodrigoMilitao8)
-- LinkedIn: [Seu Perfil](https://linkedin.com/in/rodrigo-militao)
+**[Rodrigo Militão]**
+- x: [@RodrigoMilitao8](https://x.com/RodrigoMilitao8)
+- LinkedIn: [rodrigo-militao](https://linkedin.com/in/rodrigo-militao)
