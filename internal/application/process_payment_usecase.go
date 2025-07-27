@@ -10,8 +10,8 @@ type ProcessPaymentUseCase struct {
 	Repo domain.PaymentRepository
 }
 
-func (s *ProcessPaymentUseCase) Execute(ctx context.Context, payment domain.Payment) error {
-	err := s.Repo.AddToStream(ctx, payment)
+func (s *ProcessPaymentUseCase) Execute(ctx context.Context, payload []byte) error {
+	err := s.Repo.AddToStream(ctx, payload)
 	if err != nil {
 		log.Printf("[Handler] Failed to enqueue payment: %v", err)
 		return err

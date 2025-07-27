@@ -5,8 +5,8 @@ import (
 )
 
 type Payment struct {
-	CorrelationId string
-	Amount        float64
-	RequestedAt   time.Time
-	Processor     string // "default" or "fallback"
+	CorrelationId string    `json:"correlationId"`
+	Amount        float64   `json:"amount"`
+	RequestedAt   time.Time `json:"requestedAt"`
+	Processor     string    `json:"processor,omitempty"`
 }

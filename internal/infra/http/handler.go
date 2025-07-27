@@ -3,7 +3,6 @@ package http
 import (
 	"log"
 	"rinha-golang/internal/application"
-	"rinha-golang/internal/domain"
 	"time"
 
 	json "github.com/json-iterator/go"
@@ -22,23 +21,11 @@ type paymentRequest struct {
 }
 
 func (h *Handler) HandlePayments(ctx *fasthttp.RequestCtx) {
-	var req paymentRequest
-	if err := json.Unmarshal(ctx.PostBody(), &req); err != nil {
-		ctx.Error("invalid body", fasthttp.StatusBadRequest)
-		return
-	}
-	if req.Amount <= 0 {
-		ctx.Error("invalid body", fasthttp.StatusBadRequest)
-		return
-	}
+	receivedBody := ctx.Request.Body()
+	bodyCopy := make([]byte, len(receivedBody))
+	copy(bodyCopy, receivedBody)
 
-	payment := domain.Payment{
-		CorrelationId: req.CorrelationId,
-		Amount:        req.Amount,
-		RequestedAt:   time.Now().UTC(),
-	}
-
-	err := h.ProcessPaymentUC.Execute(ctx, payment)
+	err := h.ProcessPaymentUC.Execute(ctx, bodyCopy)
 	if err != nil {
 		log.Printf("[Handler] Failed to enqueue payment: %v", err)
 		ctx.Error("failed to process payment", fasthttp.StatusServiceUnavailable)

@@ -15,23 +15,15 @@ import (
 )
 
 type Worker struct {
-	Client    *redis.Client
-	Health    *HealthCheckService
-	Repo      domain.PaymentRepository
-	WorkerNum int
+	Client     *redis.Client
+	HttpClient *http.Client
+	Health     *HealthCheckService
+	Repo       domain.PaymentRepository
+	WorkerNum  int
 }
 
 func (w *Worker) Start(ctx context.Context) {
 	processingQueue := fmt.Sprintf("payments:processing:%d", w.WorkerNum)
-	client := &http.Client{
-		Timeout: 5 * time.Second,
-		Transport: &http.Transport{
-			MaxIdleConns:        10,
-			MaxIdleConnsPerHost: 5,
-			IdleConnTimeout:     30 * time.Second,
-			DisableKeepAlives:   false,
-		},
-	}
 	for {
 		result, err := w.Client.RPopLPush(ctx, PAYMENTS_QUEUE, processingQueue).Result()
 		if err != nil {
@@ -44,15 +36,24 @@ func (w *Worker) Start(ctx context.Context) {
 			continue
 		}
 
-		var payment domain.Payment
-		if err := json.Unmarshal([]byte(result), &payment); err != nil {
+		var reqPayload struct {
+			CorrelationId string  `json:"correlationId"`
+			Amount        float64 `json:"amount"`
+		}
+		if err := json.Unmarshal([]byte(result), &reqPayload); err != nil {
 			log.Printf("[Worker %d] Failed to unmarshal payment: %v", w.WorkerNum, err)
 			w.Client.LRem(ctx, processingQueue, 1, result)
 			continue
 		}
 
+		payment := domain.Payment{
+			CorrelationId: reqPayload.CorrelationId,
+			Amount:        reqPayload.Amount,
+			RequestedAt:   time.Now().UTC(),
+		}
+
 		processor := w.Health.GetCurrent()
-		if !w.processPayment(ctx, payment, processor, client) {
+		if !w.processPayment(ctx, payment, processor, w.HttpClient) {
 			w.Client.LPush(ctx, PAYMENTS_QUEUE, result)
 			w.Client.LRem(ctx, processingQueue, 1, result)
 			continue
@@ -68,12 +69,7 @@ func (w *Worker) processPayment(ctx context.Context, payment domain.Payment, pro
 		return false
 	}
 
-	body := map[string]interface{}{
-		"correlationId": payment.CorrelationId,
-		"amount":        payment.Amount,
-		"requestedAt":   payment.RequestedAt.Format(time.RFC3339Nano),
-	}
-	b, _ := json.Marshal(body)
+	b, _ := json.Marshal(payment)
 
 	req, err := http.NewRequestWithContext(ctx, "POST", processor.URL, bytes.NewReader(b))
 	if err != nil {

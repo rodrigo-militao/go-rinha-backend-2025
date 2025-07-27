@@ -5,6 +5,8 @@ import (
 	"fmt"
 	"log"
 	"net"
+	"net/http"
+	"time"
 
 	// "net/http"
 	"os"
@@ -22,6 +24,16 @@ import (
 )
 
 func main() {
+	httpClient := &http.Client{
+		Timeout: 5 * time.Second,
+		Transport: &http.Transport{
+			MaxIdleConns:        10,
+			MaxIdleConnsPerHost: 5,
+			IdleConnTimeout:     30 * time.Second,
+			DisableKeepAlives:   false,
+		},
+	}
+
 	ctx, cancel := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer cancel()
 
@@ -47,7 +59,13 @@ func main() {
 
 	log.Printf("Iniciando %d workers...", cfg.Workers)
 	for i := 0; i < cfg.Workers; i++ {
-		worker := &redis_impl.Worker{Client: redisClient, Health: healthCheck, Repo: paymentRepo, WorkerNum: i}
+		worker := &redis_impl.Worker{
+			Client:     redisClient,
+			HttpClient: httpClient,
+			Health:     healthCheck,
+			Repo:       paymentRepo,
+			WorkerNum:  i,
+		}
 		wg.Add(1)
 		go func(workerID int) {
 			defer wg.Done()
