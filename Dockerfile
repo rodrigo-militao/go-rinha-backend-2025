@@ -7,6 +7,6 @@ RUN go build -o app ./cmd/server/main.go
 FROM alpine:3.18
 WORKDIR /app
 COPY --from=builder /app/app .
-RUN mkdir -p /tmp/app-sockets
+
 EXPOSE 9999
 CMD ["./app"] 

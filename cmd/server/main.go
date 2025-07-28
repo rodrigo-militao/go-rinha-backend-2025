@@ -40,8 +40,7 @@ func main() {
 	cfg := config.Load()
 
 	redisClient := redis.NewClient(&redis.Options{
-		Network: "unix",
-		Addr:    "/tmp/redis.sock",
+		Addr: cfg.RedisURL,
 	})
 
 	paymentRepo := redis_impl.NewRedisPaymentRepository(redisClient)
