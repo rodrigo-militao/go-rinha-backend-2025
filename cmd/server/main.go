@@ -2,9 +2,7 @@ package main
 
 import (
 	"context"
-	"fmt"
 	"log"
-	"net"
 	"net/http"
 	"time"
 
@@ -76,16 +74,6 @@ func main() {
 
 	routes_handler := http_infra.SetupRoutes(processPaymentUC, getSummaryUC)
 
-	socketPath := fmt.Sprintf("/tmp/app-sockets/%s.sock", cfg.InstanceID)
-	unixListener, err := net.Listen("unix", socketPath)
-	if err != nil {
-		log.Fatalf("Falha ao escutar no unix socket: %v", err)
-	}
-
-	if err := os.Chmod(socketPath, 0777); err != nil {
-		log.Fatalf("Falha ao alterar permissões do socket: %v", err)
-	}
-
 	server := &fasthttp.Server{
 		Handler:           routes_handler,
 		Name:              "rinha-go",
@@ -94,8 +82,8 @@ func main() {
 	}
 
 	go func() {
-		log.Printf("Servidor HTTP escutando no socket %s", socketPath)
-		if err := server.Serve(unixListener); err != nil {
+		log.Printf("Servidor HTTP escutando em %s", cfg.ListenAddr)
+		if err := server.ListenAndServe(cfg.ListenAddr); err != nil {
 			log.Fatalf("Erro fatal no servidor HTTP: %v", err)
 		}
 	}()
