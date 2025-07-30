@@ -25,8 +25,8 @@ func main() {
 	httpClient := &http.Client{
 		Timeout: 5 * time.Second,
 		Transport: &http.Transport{
-			MaxIdleConns:        10,
-			MaxIdleConnsPerHost: 5,
+			MaxIdleConns:        200,
+			MaxIdleConnsPerHost: 100,
 			IdleConnTimeout:     30 * time.Second,
 			DisableKeepAlives:   false,
 		},
@@ -40,7 +40,9 @@ func main() {
 	cfg := config.Load()
 
 	redisClient := redis.NewClient(&redis.Options{
-		Addr: cfg.RedisURL,
+		Addr:         cfg.RedisURL,
+		PoolSize:     200,
+		MinIdleConns: 50,
 	})
 
 	paymentRepo := redis_impl.NewRedisPaymentRepository(redisClient)
@@ -74,10 +76,9 @@ func main() {
 	routes_handler := http_infra.SetupRoutes(processPaymentUC, getSummaryUC)
 
 	server := &fasthttp.Server{
-		Handler:           routes_handler,
-		Name:              "rinha-go",
-		ReduceMemoryUsage: true,
-		Concurrency:       256 * 1024,
+		Handler:     routes_handler,
+		Name:        "rinha-go",
+		Concurrency: 256 * 1024,
 	}
 
 	go func() {

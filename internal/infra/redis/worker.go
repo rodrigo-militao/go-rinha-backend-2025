@@ -80,13 +80,13 @@ func (w *Worker) processPayment(ctx context.Context, payment domain.Payment, pro
 
 	resp, err := client.Do(req)
 	if err != nil {
-		log.Printf("[Worker %d] Processor %s HTTP error: %v", w.WorkerNum, processor.Service, err)
+		// log.Printf("[Worker %d] Processor %s HTTP error: %v", w.WorkerNum, processor.Service, err)
 		return false
 	}
 	defer resp.Body.Close()
 
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		log.Printf("[Worker %d] Processor %s returned status: %v", w.WorkerNum, processor.Service, resp.StatusCode)
+		// log.Printf("[Worker %d] Processor %s returned status: %v", w.WorkerNum, processor.Service, resp.StatusCode)
 		return false
 	}
 
