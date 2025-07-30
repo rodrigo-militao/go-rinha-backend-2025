@@ -22,22 +22,11 @@ import (
 )
 
 func main() {
-	httpClient := &http.Client{
-		Timeout: 5 * time.Second,
-		Transport: &http.Transport{
-			MaxIdleConns:        200,
-			MaxIdleConnsPerHost: 100,
-			IdleConnTimeout:     30 * time.Second,
-			DisableKeepAlives:   false,
-		},
-	}
-
+	cfg := config.Load()
 	ctx, cancel := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer cancel()
 
-	var wg sync.WaitGroup
-
-	cfg := config.Load()
+	workerCount := cfg.Workers
 
 	redisClient := redis.NewClient(&redis.Options{
 		Addr:         cfg.RedisURL,
@@ -45,32 +34,20 @@ func main() {
 		MinIdleConns: 50,
 	})
 
-	paymentRepo := redis_impl.NewRedisPaymentRepository(redisClient)
-	processPaymentUC := &application.ProcessPaymentUseCase{Repo: paymentRepo}
-	getSummaryUC := &application.GetSummaryUseCase{Repo: paymentRepo}
+	if workerCount > 0 {
+		startWorkers(ctx, redisClient, cfg, workerCount)
+	} else {
+		startAPI(ctx, redisClient, cfg)
+	}
+}
 
-	healthCheck := redis_impl.NewHealthCheckService(redisClient, cfg)
-	wg.Add(1)
-	go func() {
-		defer wg.Done()
-		healthCheck.Start()
-	}()
+func startAPI(ctx context.Context, redisClient *redis.Client, cfg config.Config) {
+	processPaymentUC := &application.ProcessPaymentUseCase{
+		Repo: redis_impl.NewRedisPaymentRepository(redisClient),
+	}
 
-	log.Printf("Iniciando %d workers...", cfg.Workers)
-	for i := 0; i < cfg.Workers; i++ {
-		worker := &redis_impl.Worker{
-			Client:     redisClient,
-			HttpClient: httpClient,
-			Health:     healthCheck,
-			Repo:       paymentRepo,
-			WorkerNum:  i,
-		}
-		wg.Add(1)
-		go func(workerID int) {
-			defer wg.Done()
-			worker.Start(ctx)
-			log.Printf("Worker %d encerrado.", workerID)
-		}(i + 1)
+	getSummaryUC := &application.GetSummaryUseCase{
+		Repo: redis_impl.NewRedisPaymentRepository(redisClient),
 	}
 
 	routes_handler := http_infra.SetupRoutes(processPaymentUC, getSummaryUC)
@@ -88,18 +65,55 @@ func main() {
 		}
 	}()
 
-	log.Println("Aplicação iniciada. Pressione Ctrl+C para encerrar.")
+	log.Println("API iniciada. Pressione Ctrl+C para encerrar.")
 	<-ctx.Done()
 
-	log.Println("Sinal de desligamento recebido...")
+	log.Println("Encerrando servidor HTTP...")
 	if err := server.Shutdown(); err != nil {
-		log.Printf("Erro no desligamento do servidor fasthttp: %v", err)
+		log.Printf("Erro ao encerrar HTTP: %v", err)
 	}
 	log.Println("Servidor HTTP encerrado.")
+}
 
-	log.Println("Aguardando todos os processos em background finalizarem...")
+func startWorkers(ctx context.Context, redisClient *redis.Client, cfg config.Config, workerCount int) {
+	log.Printf("Iniciando %d workers...", workerCount)
 
+	httpClient := &http.Client{
+		Timeout: 5 * time.Second,
+		Transport: &http.Transport{
+			MaxIdleConns:        200,
+			MaxIdleConnsPerHost: 100,
+			IdleConnTimeout:     30 * time.Second,
+			DisableKeepAlives:   false,
+		},
+	}
+
+	healthCheck := redis_impl.NewHealthCheckService(redisClient, cfg)
+	go healthCheck.Start()
+
+	repo := redis_impl.NewRedisPaymentRepository(redisClient)
+
+	var wg sync.WaitGroup
+	for i := 0; i < workerCount; i++ {
+		worker := &redis_impl.Worker{
+			Client:     redisClient,
+			HttpClient: httpClient,
+			Health:     healthCheck,
+			Repo:       repo,
+			WorkerNum:  i,
+		}
+		wg.Add(1)
+		go func(w *redis_impl.Worker, id int) {
+			defer wg.Done()
+			w.Start(ctx)
+			log.Printf("Worker %d encerrado.", id)
+		}(worker, i+1)
+	}
+
+	log.Println("Workers rodando. Pressione Ctrl+C para encerrar.")
+	<-ctx.Done()
+
+	log.Println("Encerrando workers...")
 	wg.Wait()
-
-	log.Println("Aplicação encerrada com sucesso.")
+	log.Println("Workers finalizados.")
 }

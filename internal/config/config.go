@@ -15,7 +15,7 @@ type Config struct {
 }
 
 func Load() Config {
-	workers := 2
+	workers := 0
 	if w := os.Getenv("WORKERS"); w != "" {
 		if n, err := strconv.Atoi(w); err == nil {
 			workers = n
@@ -26,7 +26,6 @@ func Load() Config {
 		ListenAddr:           getenv("LISTEN_ADDR", ":8080"),
 		ProcessorDefaultURL:  getenv("PROCESSOR_DEFAULT_URL", "http://payment-processor-default:8080"),
 		ProcessorFallbackURL: getenv("PROCESSOR_FALLBACK_URL", "http://payment-processor-fallback:8080"),
-		InstanceID:           getenv("APP_INSTANCE_ID", "app1"),
 		Workers:              workers,
 	}
 }
