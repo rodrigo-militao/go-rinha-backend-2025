@@ -1,25 +1,24 @@
 package redis
 
 import (
-	"bytes"
 	"context"
 	"fmt"
 	"log"
-	"net/http"
 	"rinha-golang/internal/domain"
 	"time"
 
 	json "github.com/json-iterator/go"
+	"github.com/valyala/fasthttp"
 
 	"github.com/redis/go-redis/v9"
 )
 
 type Worker struct {
-	Client     *redis.Client
-	HttpClient *http.Client
-	Health     *HealthCheckService
-	Repo       domain.PaymentRepository
-	WorkerNum  int
+	Client      *redis.Client
+	HostClients map[string]*fasthttp.HostClient
+	Health      *HealthCheckService
+	Repo        domain.PaymentRepository
+	WorkerNum   int
 }
 
 func (w *Worker) Start(ctx context.Context) {
@@ -53,7 +52,7 @@ func (w *Worker) Start(ctx context.Context) {
 		}
 
 		processor := w.Health.GetCurrent()
-		if !w.processPayment(ctx, payment, processor, w.HttpClient) {
+		if !w.processPayment(ctx, payment, processor) {
 			w.Client.LPush(ctx, PAYMENTS_QUEUE, result)
 			w.Client.LRem(ctx, processingQueue, 1, result)
 			continue
@@ -63,36 +62,42 @@ func (w *Worker) Start(ctx context.Context) {
 	}
 }
 
-func (w *Worker) processPayment(ctx context.Context, payment domain.Payment, processor ProcessorStatus, client *http.Client) bool {
+func (w *Worker) processPayment(ctx context.Context, payment domain.Payment, processor ProcessorStatus) bool {
 	if processor.URL == "" {
 		log.Printf("[Worker %d] CRITICAL: Processor URL is empty!", w.WorkerNum)
 		return false
 	}
 
-	b, _ := json.Marshal(payment)
-
-	req, err := http.NewRequestWithContext(ctx, "POST", processor.URL, bytes.NewReader(b))
+	body, err := json.Marshal(payment)
 	if err != nil {
-		log.Printf("[Worker %d] Failed to create request: %v", w.WorkerNum, err)
 		return false
 	}
-	req.Header.Set("Content-Type", "application/json")
 
-	resp, err := client.Do(req)
-	if err != nil {
-		// log.Printf("[Worker %d] Processor %s HTTP error: %v", w.WorkerNum, processor.Service, err)
+	req := fasthttp.AcquireRequest()
+	resp := fasthttp.AcquireResponse()
+	defer fasthttp.ReleaseRequest(req)
+	defer fasthttp.ReleaseResponse(resp)
+
+	req.SetRequestURI(processor.URL)
+	req.Header.SetMethod(fasthttp.MethodPost)
+	req.Header.SetContentType("application/json")
+	req.SetBody(body)
+
+	client := w.HostClients[processor.Service]
+
+	if err := client.Do(req, resp); err != nil {
 		return false
 	}
-	defer resp.Body.Close()
 
-	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		// log.Printf("[Worker %d] Processor %s returned status: %v", w.WorkerNum, processor.Service, resp.StatusCode)
+	status := resp.StatusCode()
+	if status < 200 || status >= 300 {
+		// log.Printf("[Worker %d] Erro na resposta: %d - %s", w.WorkerNum, status, resp.Body())
 		return false
 	}
 
 	payment.Processor = processor.Service
 	if err := w.Repo.StorePayment(ctx, payment); err != nil {
-		log.Printf("[Worker %d] CRITICAL: Payment accepted by processor but failed to save in Redis: %v", w.WorkerNum, err)
+		log.Printf("[Worker %d] CRITICAL: Falha ao salvar pagamento: %v", w.WorkerNum, err)
 	}
 	return true
 }

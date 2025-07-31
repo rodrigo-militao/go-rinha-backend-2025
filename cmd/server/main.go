@@ -3,10 +3,8 @@ package main
 import (
 	"context"
 	"log"
-	"net/http"
 	"time"
 
-	// "net/http"
 	"os"
 	"os/signal"
 	"rinha-golang/internal/application"
@@ -16,6 +14,8 @@ import (
 	"syscall"
 
 	redis_impl "rinha-golang/internal/infra/redis"
+
+	// _ "rinha-golang/internal/pprof"
 
 	"github.com/redis/go-redis/v9"
 	"github.com/valyala/fasthttp"
@@ -31,7 +31,7 @@ func main() {
 	redisClient := redis.NewClient(&redis.Options{
 		Addr:         cfg.RedisURL,
 		PoolSize:     200,
-		MinIdleConns: 50,
+		MinIdleConns: 100,
 	})
 
 	if workerCount > 0 {
@@ -42,12 +42,14 @@ func main() {
 }
 
 func startAPI(ctx context.Context, redisClient *redis.Client, cfg config.Config) {
+	repo := redis_impl.NewRedisPaymentRepository(redisClient)
+
 	processPaymentUC := &application.ProcessPaymentUseCase{
-		Repo: redis_impl.NewRedisPaymentRepository(redisClient),
+		Repo: repo,
 	}
 
 	getSummaryUC := &application.GetSummaryUseCase{
-		Repo: redis_impl.NewRedisPaymentRepository(redisClient),
+		Repo: repo,
 	}
 
 	routes_handler := http_infra.SetupRoutes(processPaymentUC, getSummaryUC)
@@ -78,13 +80,20 @@ func startAPI(ctx context.Context, redisClient *redis.Client, cfg config.Config)
 func startWorkers(ctx context.Context, redisClient *redis.Client, cfg config.Config, workerCount int) {
 	log.Printf("Iniciando %d workers...", workerCount)
 
-	httpClient := &http.Client{
-		Timeout: 5 * time.Second,
-		Transport: &http.Transport{
-			MaxIdleConns:        200,
-			MaxIdleConnsPerHost: 100,
-			IdleConnTimeout:     30 * time.Second,
-			DisableKeepAlives:   false,
+	clients := map[string]*fasthttp.HostClient{
+		"default": {
+			Addr:                "payment-processor-default:8080",
+			MaxConns:            512,
+			MaxIdleConnDuration: 30 * time.Second,
+			ReadTimeout:         5 * time.Second,
+			WriteTimeout:        5 * time.Second,
+		},
+		"fallback": {
+			Addr:                "payment-processor-fallback:8080",
+			MaxConns:            512,
+			MaxIdleConnDuration: 30 * time.Second,
+			ReadTimeout:         5 * time.Second,
+			WriteTimeout:        5 * time.Second,
 		},
 	}
 
@@ -96,11 +105,11 @@ func startWorkers(ctx context.Context, redisClient *redis.Client, cfg config.Con
 	var wg sync.WaitGroup
 	for i := 0; i < workerCount; i++ {
 		worker := &redis_impl.Worker{
-			Client:     redisClient,
-			HttpClient: httpClient,
-			Health:     healthCheck,
-			Repo:       repo,
-			WorkerNum:  i,
+			Client:      redisClient,
+			HostClients: clients,
+			Health:      healthCheck,
+			Repo:        repo,
+			WorkerNum:   i,
 		}
 		wg.Add(1)
 		go func(w *redis_impl.Worker, id int) {

@@ -2,12 +2,12 @@ package redis
 
 import (
 	"context"
-	"net/http"
 	"rinha-golang/internal/config"
 	"sync/atomic"
 	"time"
 
 	json "github.com/json-iterator/go"
+	"github.com/valyala/fasthttp"
 
 	"github.com/redis/go-redis/v9"
 )
@@ -20,7 +20,7 @@ type ProcessorStatus struct {
 type HealthCheckService struct {
 	redisClient *redis.Client
 	config      config.Config
-	Healthy     atomic.Value // ProcessorStatus
+	Healthy     atomic.Value
 }
 
 func NewHealthCheckService(client *redis.Client, cfg config.Config) *HealthCheckService {
@@ -30,8 +30,10 @@ func NewHealthCheckService(client *redis.Client, cfg config.Config) *HealthCheck
 }
 
 func (h *HealthCheckService) Start() {
+	h.updateHealthyProcessor()
+
 	go func() {
-		ticker := time.NewTicker(6 * time.Second)
+		ticker := time.NewTicker(7 * time.Second)
 		defer ticker.Stop()
 		for range ticker.C {
 			if h.acquireLock() {
@@ -45,8 +47,9 @@ func (h *HealthCheckService) Start() {
 }
 
 func (h *HealthCheckService) acquireLock() bool {
-	ctx := context.Background()
-	ok, _ := h.redisClient.SetNX(ctx, "health_check_lock", "locked", 10*time.Second).Result()
+	ctx, cancel := context.WithTimeout(context.Background(), 100*time.Millisecond)
+	defer cancel()
+	ok, _ := h.redisClient.SetNX(ctx, "health_check_lock", "locked", 7*time.Second).Result()
 	return ok
 }
 
@@ -56,36 +59,48 @@ func (h *HealthCheckService) releaseLock() {
 
 func (h *HealthCheckService) updateHealthyProcessor() {
 	defaultURL := h.config.ProcessorDefaultURL
-	fallbackURL := h.config.ProcessorFallbackURL
-	serviceHealthPath := "/service-health"
+	serviceHealthPath := "/payments/service-health"
 
 	if h.isHealthy(defaultURL + serviceHealthPath) {
 		h.Healthy.Store(ProcessorStatus{URL: defaultURL + "/payments", Service: "default"})
 		h.saveHealthyToRedis("default")
 		return
 	}
-	if h.isHealthy(fallbackURL + serviceHealthPath) {
-		h.Healthy.Store(ProcessorStatus{URL: fallbackURL + "/payments", Service: "fallback"})
-		h.saveHealthyToRedis("fallback")
-		return
-	}
-	cur := h.Healthy.Load().(ProcessorStatus)
-	h.saveHealthyToRedis(cur.Service)
+
+	h.Healthy.Store(ProcessorStatus{URL: h.config.ProcessorFallbackURL + "/payments", Service: "fallback"})
+	h.saveHealthyToRedis("fallback")
 }
 
 func (h *HealthCheckService) isHealthy(url string) bool {
-	resp, err := http.Get(url)
-	if err != nil {
+	req := fasthttp.AcquireRequest()
+	defer fasthttp.ReleaseRequest(req)
+
+	resp := fasthttp.AcquireResponse()
+	defer fasthttp.ReleaseResponse(resp)
+
+	req.SetRequestURI(url)
+	req.Header.SetMethod(fasthttp.MethodGet)
+
+	if err := fasthttp.Do(req, resp); err != nil {
 		return false
 	}
-	defer resp.Body.Close()
+
+	if resp.StatusCode() >= 400 {
+		return false
+	}
+
 	var res struct{ Failing bool }
-	_ = json.NewDecoder(resp.Body).Decode(&res)
+	body := resp.Body()
+	if err := json.Unmarshal(body, &res); err != nil {
+		return false
+	}
+
 	return !res.Failing
 }
 
 func (h *HealthCheckService) saveHealthyToRedis(service string) {
-	ctx := context.Background()
+	ctx, cancel := context.WithTimeout(context.Background(), 100*time.Millisecond)
+	defer cancel()
 	h.redisClient.HMSet(ctx, "healthy_processor_status", map[string]interface{}{
 		"service":   service,
 		"timestamp": time.Now().Unix(),
@@ -93,7 +108,8 @@ func (h *HealthCheckService) saveHealthyToRedis(service string) {
 }
 
 func (h *HealthCheckService) readHealthyFromRedis() {
-	ctx := context.Background()
+	ctx, cancel := context.WithTimeout(context.Background(), 100*time.Millisecond)
+	defer cancel()
 	m, _ := h.redisClient.HGetAll(ctx, "healthy_processor_status").Result()
 	switch m["service"] {
 	case "default":
