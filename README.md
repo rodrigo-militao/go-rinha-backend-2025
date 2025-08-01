@@ -102,8 +102,13 @@ k6 run rinha-test/rinha.js
 
 ## 📈 Observabilidade (pprof)
 
-Para que utilizar o `pprof` na aplicação, basta descomentar a linha `_ "rinha-golang/internal/pprof"` no main.go.
-Após isto, a aplicação já inicia com o servidor pprof ativado em `:6060`. Para capturar CPU profile:
+Para utilizar o `pprof` na aplicação, basta descomentar a linha 
+```go
+_ "rinha-golang/internal/pprof"
+``` 
+no arquivo `main.go`.
+
+Após isto, a aplicação já inicia com o servidor `pprof` ativado na porta `:6060`. Para capturar CPU profile:
 
 ```bash
 go tool pprof http://localhost:6060/debug/pprof/profile?seconds=30
@@ -115,7 +120,7 @@ Para visualizar:
 go tool pprof -http=:8081 profile.pb.gz
 ```
 
-Ou, se preferir um relatório em pdf appós a execução, basta descomentar as linhas `21` a `25` no script `./run-tests.sh`.
+Ou, se preferir um relatório em pdf após a execução, basta descomentar as linhas `21` a `25` no script `./run-tests.sh`.
 
 ## 👤 Autor
 
