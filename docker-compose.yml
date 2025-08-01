@@ -27,6 +27,9 @@ services:
     networks:
       - backend
       - payment-processor
+    depends_on:
+      redis:
+        condition: service_healthy
     environment:
       - LISTEN_ADDR=:8080
       - REDIS_URL=redis:6379
@@ -54,6 +57,9 @@ services:
       - PROCESSOR_DEFAULT_URL=http://payment-processor-default:8080
       - PROCESSOR_FALLBACK_URL=http://payment-processor-fallback:8080
       - WORKERS=5
+    depends_on:
+      redis:
+        condition: service_healthy
     networks:
       - backend
       - payment-processor

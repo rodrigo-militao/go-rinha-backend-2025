@@ -24,12 +24,8 @@ type Worker struct {
 func (w *Worker) Start(ctx context.Context) {
 	processingQueue := fmt.Sprintf("payments:processing:%d", w.WorkerNum)
 	for {
-		result, err := w.Client.RPopLPush(ctx, PAYMENTS_QUEUE, processingQueue).Result()
+		result, err := w.Client.BLPop(ctx, 0, PAYMENTS_QUEUE).Result()
 		if err != nil {
-			if err == redis.Nil {
-				time.Sleep(1 * time.Second)
-				continue
-			}
 			log.Printf("[Worker %d] Redis error: %v", w.WorkerNum, err)
 			time.Sleep(1 * time.Second)
 			continue
@@ -39,7 +35,7 @@ func (w *Worker) Start(ctx context.Context) {
 			CorrelationId string  `json:"correlationId"`
 			Amount        float64 `json:"amount"`
 		}
-		if err := json.Unmarshal([]byte(result), &reqPayload); err != nil {
+		if err := json.Unmarshal([]byte(result[1]), &reqPayload); err != nil {
 			log.Printf("[Worker %d] Failed to unmarshal payment: %v", w.WorkerNum, err)
 			w.Client.LRem(ctx, processingQueue, 1, result)
 			continue
@@ -53,23 +49,15 @@ func (w *Worker) Start(ctx context.Context) {
 
 		processor := w.Health.GetCurrent()
 		if !w.processPayment(ctx, payment, processor) {
-			w.Client.LPush(ctx, PAYMENTS_QUEUE, result)
-			w.Client.LRem(ctx, processingQueue, 1, result)
+			w.Client.RPush(ctx, PAYMENTS_QUEUE, result[1])
 			continue
 		}
-
-		w.Client.LRem(ctx, processingQueue, 1, result)
 	}
 }
 
 func (w *Worker) processPayment(ctx context.Context, payment domain.Payment, processor ProcessorStatus) bool {
 	if processor.URL == "" {
 		log.Printf("[Worker %d] CRITICAL: Processor URL is empty!", w.WorkerNum)
-		return false
-	}
-
-	body, err := json.Marshal(payment)
-	if err != nil {
 		return false
 	}
 
@@ -81,7 +69,12 @@ func (w *Worker) processPayment(ctx context.Context, payment domain.Payment, pro
 	req.SetRequestURI(processor.URL)
 	req.Header.SetMethod(fasthttp.MethodPost)
 	req.Header.SetContentType("application/json")
-	req.SetBody(body)
+
+	fmt.Fprintf(req.BodyWriter(), `{
+        "correlationId": "%s",
+        "amount": %f,
+        "requestedAt": "%s"
+    }`, payment.CorrelationId, payment.Amount, payment.RequestedAt.Format(time.RFC3339Nano))
 
 	client := w.HostClients[processor.Service]
 
@@ -91,7 +84,6 @@ func (w *Worker) processPayment(ctx context.Context, payment domain.Payment, pro
 
 	status := resp.StatusCode()
 	if status < 200 || status >= 300 {
-		// log.Printf("[Worker %d] Erro na resposta: %d - %s", w.WorkerNum, status, resp.Body())
 		return false
 	}
 
