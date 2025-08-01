@@ -22,7 +22,6 @@ type Worker struct {
 }
 
 func (w *Worker) Start(ctx context.Context) {
-	processingQueue := fmt.Sprintf("payments:processing:%d", w.WorkerNum)
 	for {
 		result, err := w.Client.BLPop(ctx, 0, PAYMENTS_QUEUE).Result()
 		if err != nil {
@@ -37,7 +36,6 @@ func (w *Worker) Start(ctx context.Context) {
 		}
 		if err := json.Unmarshal([]byte(result[1]), &reqPayload); err != nil {
 			log.Printf("[Worker %d] Failed to unmarshal payment: %v", w.WorkerNum, err)
-			w.Client.LRem(ctx, processingQueue, 1, result)
 			continue
 		}
 
