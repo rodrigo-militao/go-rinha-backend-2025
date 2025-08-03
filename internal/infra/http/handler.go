@@ -21,11 +21,7 @@ type paymentRequest struct {
 }
 
 func (h *Handler) HandlePayments(ctx *fasthttp.RequestCtx) {
-	receivedBody := ctx.Request.Body()
-	bodyCopy := make([]byte, len(receivedBody))
-	copy(bodyCopy, receivedBody)
-
-	err := h.ProcessPaymentUC.Execute(ctx, bodyCopy)
+	err := h.ProcessPaymentUC.Execute(ctx, ctx.Request.Body())
 	if err != nil {
 		log.Printf("[Handler] Failed to enqueue payment: %v", err)
 		ctx.Error("failed to process payment", fasthttp.StatusServiceUnavailable)

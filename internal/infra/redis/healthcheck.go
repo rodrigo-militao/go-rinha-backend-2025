@@ -33,7 +33,7 @@ func (h *HealthCheckService) Start() {
 	h.updateHealthyProcessor()
 
 	go func() {
-		ticker := time.NewTicker(7 * time.Second)
+		ticker := time.NewTicker(6 * time.Second)
 		defer ticker.Stop()
 		for range ticker.C {
 			if h.acquireLock() {
@@ -49,7 +49,7 @@ func (h *HealthCheckService) Start() {
 func (h *HealthCheckService) acquireLock() bool {
 	ctx, cancel := context.WithTimeout(context.Background(), 100*time.Millisecond)
 	defer cancel()
-	ok, _ := h.redisClient.SetNX(ctx, "health_check_lock", "locked", 7*time.Second).Result()
+	ok, _ := h.redisClient.SetNX(ctx, "health_check_lock", "locked", 6*time.Second).Result()
 	return ok
 }
 

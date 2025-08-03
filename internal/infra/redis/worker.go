@@ -13,6 +13,11 @@ import (
 	"github.com/redis/go-redis/v9"
 )
 
+type reqPayload struct {
+	CorrelationId string  `json:"correlationId"`
+	Amount        float64 `json:"amount"`
+}
+
 type Worker struct {
 	Client      *redis.Client
 	HostClients map[string]*fasthttp.HostClient
@@ -30,15 +35,11 @@ func (w *Worker) Start(ctx context.Context) {
 			continue
 		}
 
-		var reqPayload struct {
-			CorrelationId string  `json:"correlationId"`
-			Amount        float64 `json:"amount"`
-		}
+		var reqPayload reqPayload
 		if err := json.Unmarshal([]byte(result[1]), &reqPayload); err != nil {
 			log.Printf("[Worker %d] Failed to unmarshal payment: %v", w.WorkerNum, err)
 			continue
 		}
-
 		payment := domain.Payment{
 			CorrelationId: reqPayload.CorrelationId,
 			Amount:        reqPayload.Amount,
