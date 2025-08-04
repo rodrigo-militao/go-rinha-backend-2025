@@ -9,7 +9,7 @@ A arquitetura é **assíncrona**, com duas instâncias da API Go e uma instânci
 ```mermaid
 graph TD
     subgraph Cliente
-        A[Cliente k6]
+        A[Cliente]
     end
 
     subgraph Aplicação
@@ -17,11 +17,12 @@ graph TD
         C1[API Go - Instância 1]
         C2[API Go - Instância 2]
         D[Worker Go - Pool Dedicado]
+        I["Health Check Service<br/>(a cada 6s)"]
     end
 
     subgraph Redis
         E[payments_queue - List]
-        F["payments_hash - HSet (idempotência)"]
+        F[healthy_processor_status - Hash]
     end
 
     subgraph Processadores
@@ -34,10 +35,13 @@ graph TD
     B --> C2
     C1 -->|LPUSH| E
     C2 -->|LPUSH| E
-    D -->|RPOPLPUSH/Processa/Salva| E
-    D --> F
+    D -->|BLPOP/Processa| E
     D --> G
     D --> H
+
+    I -->|Verifica '/health'| G
+    I -->|"Salva processor<br/>ativo"| F
+    D -->|"Consulta processor<br/>ativo"| F
 ```
 
 ## ✨ Tecnologias Utilizadas
