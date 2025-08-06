@@ -2,20 +2,20 @@ package redis
 
 import (
 	"context"
-	"fmt"
 	"log"
 	"rinha-golang/internal/domain"
+	"sync"
 	"time"
 
-	json "github.com/json-iterator/go"
 	"github.com/valyala/fasthttp"
 
 	"github.com/redis/go-redis/v9"
 )
 
-type reqPayload struct {
-	CorrelationId string  `json:"correlationId"`
-	Amount        float64 `json:"amount"`
+var reqPayloadPool = sync.Pool{
+	New: func() any {
+		return new(ReqPayload)
+	},
 }
 
 type Worker struct {
@@ -35,31 +35,33 @@ func (w *Worker) Start(ctx context.Context) {
 			continue
 		}
 
-		var reqPayload reqPayload
-		if err := json.Unmarshal([]byte(result[1]), &reqPayload); err != nil {
+		payload := reqPayloadPool.Get().(*ReqPayload)
+		*payload = ReqPayload{}
+
+		if err := payload.UnmarshalJSON([]byte(result[1])); err != nil {
 			log.Printf("[Worker %d] Failed to unmarshal payment: %v", w.WorkerNum, err)
+			reqPayloadPool.Put(payload)
 			continue
 		}
+
 		payment := domain.Payment{
-			CorrelationId: reqPayload.CorrelationId,
-			Amount:        reqPayload.Amount,
+			CorrelationId: payload.CorrelationId,
+			Amount:        payload.Amount,
 			RequestedAt:   time.Now().UTC(),
 		}
 
 		processor := w.Health.GetCurrent()
 		if !w.processPayment(ctx, payment, processor) {
 			w.Client.RPush(ctx, PAYMENTS_QUEUE, result[1])
+			reqPayloadPool.Put(payload)
 			continue
 		}
+
+		reqPayloadPool.Put(payload)
 	}
 }
 
 func (w *Worker) processPayment(ctx context.Context, payment domain.Payment, processor ProcessorStatus) bool {
-	if processor.URL == "" {
-		log.Printf("[Worker %d] CRITICAL: Processor URL is empty!", w.WorkerNum)
-		return false
-	}
-
 	req := fasthttp.AcquireRequest()
 	resp := fasthttp.AcquireResponse()
 	defer fasthttp.ReleaseRequest(req)
@@ -69,11 +71,13 @@ func (w *Worker) processPayment(ctx context.Context, payment domain.Payment, pro
 	req.Header.SetMethod(fasthttp.MethodPost)
 	req.Header.SetContentType("application/json")
 
-	fmt.Fprintf(req.BodyWriter(), `{
-        "correlationId": "%s",
-        "amount": %f,
-        "requestedAt": "%s"
-    }`, payment.CorrelationId, payment.Amount, payment.RequestedAt.Format(time.RFC3339Nano))
+	reqPayload := &ReqPayload{
+		CorrelationId: payment.CorrelationId,
+		Amount:        payment.Amount,
+		RequestedAt:   payment.RequestedAt,
+	}
+	body, _ := reqPayload.MarshalJSON()
+	req.SetBody(body)
 
 	client := w.HostClients[processor.Service]
 
@@ -87,8 +91,6 @@ func (w *Worker) processPayment(ctx context.Context, payment domain.Payment, pro
 	}
 
 	payment.Processor = processor.Service
-	if err := w.Repo.StorePayment(ctx, payment); err != nil {
-		log.Printf("[Worker %d] CRITICAL: Falha ao salvar pagamento: %v", w.WorkerNum, err)
-	}
+	w.Repo.StorePayment(ctx, payment)
 	return true
 }

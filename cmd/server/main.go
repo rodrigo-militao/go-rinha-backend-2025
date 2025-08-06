@@ -39,6 +39,8 @@ func main() {
 	} else {
 		startAPI(ctx, redisClient, cfg)
 	}
+
+	warmUp(redisClient)
 }
 
 func startAPI(ctx context.Context, redisClient *redis.Client, cfg config.Config) {
@@ -125,4 +127,9 @@ func startWorkers(ctx context.Context, redisClient *redis.Client, cfg config.Con
 	log.Println("Encerrando workers...")
 	wg.Wait()
 	log.Println("Workers finalizados.")
+}
+
+func warmUp(redisClient *redis.Client) {
+	ctx := context.Background()
+	_ = redisClient.Ping(ctx).Err()
 }

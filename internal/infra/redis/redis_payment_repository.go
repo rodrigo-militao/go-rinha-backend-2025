@@ -5,8 +5,6 @@ import (
 	"fmt"
 	"rinha-golang/internal/domain"
 
-	json "github.com/json-iterator/go"
-
 	"github.com/redis/go-redis/v9"
 )
 
@@ -22,16 +20,16 @@ func (r *RedisPaymentRepository) PurgePayments(ctx context.Context) error {
 	return r.client.FlushDB(ctx).Err()
 }
 
-func (r *RedisPaymentRepository) AddToStream(ctx context.Context, data []byte) error {
-	return r.client.LPush(ctx, PAYMENTS_QUEUE, data).Err()
+func (r *RedisPaymentRepository) AddToStream(ctx context.Context, data []byte) {
+	r.client.LPush(ctx, PAYMENTS_QUEUE, data)
 }
 
-func (r *RedisPaymentRepository) StorePayment(ctx context.Context, payment domain.Payment) error {
-	paymentJSON, err := json.Marshal(payment)
+func (r *RedisPaymentRepository) StorePayment(ctx context.Context, payment domain.Payment) {
+	paymentJSON, err := payment.MarshalJSON()
 	if err != nil {
-		return fmt.Errorf("failed to marshal payment data: %w", err)
+		return
 	}
-	return r.client.HSet(ctx, PAYMENTS_HASH, payment.CorrelationId, paymentJSON).Err()
+	r.client.HSet(ctx, PAYMENTS_HASH, payment.CorrelationId, paymentJSON)
 }
 
 func (r *RedisPaymentRepository) GetAllPayments(ctx context.Context) ([]domain.Payment, error) {
@@ -44,7 +42,7 @@ func (r *RedisPaymentRepository) GetAllPayments(ctx context.Context) ([]domain.P
 
 	for _, paymentDataJSON := range paymentsData {
 		var payment domain.Payment
-		if err := json.Unmarshal([]byte(paymentDataJSON), &payment); err == nil {
+		if err := payment.UnmarshalJSON([]byte(paymentDataJSON)); err == nil {
 			payments = append(payments, payment)
 		}
 	}

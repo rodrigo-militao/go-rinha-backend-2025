@@ -6,7 +6,6 @@ import (
 	"sync/atomic"
 	"time"
 
-	json "github.com/json-iterator/go"
 	"github.com/valyala/fasthttp"
 
 	"github.com/redis/go-redis/v9"
@@ -89,12 +88,10 @@ func (h *HealthCheckService) isHealthy(url string) bool {
 		return false
 	}
 
-	var res struct{ Failing bool }
-	body := resp.Body()
-	if err := json.Unmarshal(body, &res); err != nil {
+	var res HealthResponse
+	if err := res.UnmarshalJSON(resp.Body()); err != nil {
 		return false
 	}
-
 	return !res.Failing
 }
 

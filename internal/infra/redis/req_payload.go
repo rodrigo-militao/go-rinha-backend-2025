@@ -1,15 +1,12 @@
-package domain
+package redis
 
-import (
-	"time"
-)
+import "time"
 
-//go:generate easyjson
+//go:generate easyjson -all req_payload.go
 
 //easyjson:json
-type Payment struct {
+type ReqPayload struct {
 	CorrelationId string    `json:"correlationId"`
 	Amount        float64   `json:"amount"`
 	RequestedAt   time.Time `json:"requestedAt"`
-	Processor     string    `json:"processor,omitempty"`
 }
