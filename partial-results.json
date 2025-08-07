@@ -1,11 +1,11 @@
 {
   "participante": "anonymous",
-  "total_liquido": 273138.4449999607,
-  "total_bruto": 297007.49999995827,
-  "total_taxas": 23869.05499999753,
+  "total_liquido": 283911.3099999863,
+  "total_bruto": 299176.5999999856,
+  "total_taxas": 15265.28999999928,
   "descricao": "'total_liquido' é sua pontuação final. Equivale ao seu lucro. Fórmula: total_liquido + (total_liquido * p99.bonus) - (total_liquido * multa.porcentagem)",
   "p99": {
-    "valor": "198.22ms",
+    "valor": "384.42ms",
     "bonus": "0%",
     "max_requests": 500,
     "descricao": "Fórmula para o bônus: max((11 - p99.valor) * 0.02, 0)"
@@ -23,26 +23,26 @@
     "descricao": "Se 'lag' for negativo, significa que seu backend registrou mais pagamentos do que solicitado, automaticamente desclassificando sua submissão!"
   },
   "lag": {
-    "num_pagamentos_total": 14925,
-    "num_pagamentos_solicitados": 14925,
+    "num_pagamentos_total": 15034,
+    "num_pagamentos_solicitados": 15034,
     "lag": 0,
     "descricao": "Lag é a diferença entre a quantidade de solicitações de pagamentos e o que foi realmente computado pelo backend. Mostra a perda de pagamentos possivelmente por estarem enfileirados."
   },
   "pagamentos_solicitados": {
-    "qtd_sucesso": 14925,
+    "qtd_sucesso": 15034,
     "qtd_falha": 0,
     "descricao": "'qtd_sucesso' foram requests bem sucedidos para 'POST /payments' e 'qtd_falha' os requests com erro."
   },
   "pagamentos_realizados_default": {
-    "total_bruto": 206820.69999996206,
-    "num_pagamentos": 10393,
-    "total_taxas": 10341.034999998103,
+    "total_bruto": 296111.9999999856,
+    "num_pagamentos": 14880,
+    "total_taxas": 14805.59999999928,
     "descricao": "Informações do backend sobre solicitações de pagamento para o Payment Processor Default."
   },
   "pagamentos_realizados_fallback": {
-    "total_bruto": 90186.79999999618,
-    "num_pagamentos": 4532,
-    "total_taxas": 13528.019999999427,
+    "total_bruto": 3064.6000000000085,
+    "num_pagamentos": 154,
+    "total_taxas": 459.69000000000125,
     "descricao": "Informações do backend sobre solicitações de pagamento para o Payment Processor Fallback."
   }
 }

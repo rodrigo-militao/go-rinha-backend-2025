@@ -28,10 +28,15 @@ func main() {
 
 	workerCount := cfg.Workers
 
+	// redisClient := redis.NewClient(&redis.Options{
+	// 	Addr:         cfg.RedisURL,
+	// 	PoolSize:     200,
+	// 	MinIdleConns: 100,
+	// })
+
 	redisClient := redis.NewClient(&redis.Options{
-		Addr:         cfg.RedisURL,
-		PoolSize:     200,
-		MinIdleConns: 100,
+		Network: "unix",
+		Addr:    "/tmp/redis.sock",
 	})
 
 	if workerCount > 0 {
@@ -85,22 +90,22 @@ func startWorkers(ctx context.Context, redisClient *redis.Client, cfg config.Con
 	clients := map[string]*fasthttp.HostClient{
 		"default": {
 			Addr:                "payment-processor-default:8080",
-			MaxConns:            512,
-			MaxIdleConnDuration: 30 * time.Second,
-			ReadTimeout:         5 * time.Second,
-			WriteTimeout:        5 * time.Second,
+			MaxConns:            1024,
+			MaxIdleConnDuration: 5 * time.Second,
+			ReadTimeout:         3 * time.Second,
+			WriteTimeout:        3 * time.Second,
 		},
 		"fallback": {
 			Addr:                "payment-processor-fallback:8080",
-			MaxConns:            512,
-			MaxIdleConnDuration: 30 * time.Second,
-			ReadTimeout:         5 * time.Second,
-			WriteTimeout:        5 * time.Second,
+			MaxConns:            1024,
+			MaxIdleConnDuration: 5 * time.Second,
+			ReadTimeout:         3 * time.Second,
+			WriteTimeout:        3 * time.Second,
 		},
 	}
 
-	healthCheck := redis_impl.NewHealthCheckService(redisClient, cfg)
-	go healthCheck.Start()
+	// healthCheck := redis_impl.NewHealthCheckService(redisClient, cfg)
+	// go healthCheck.Start()
 
 	repo := redis_impl.NewRedisPaymentRepository(redisClient)
 
@@ -109,7 +114,6 @@ func startWorkers(ctx context.Context, redisClient *redis.Client, cfg config.Con
 		worker := &redis_impl.Worker{
 			Client:      redisClient,
 			HostClients: clients,
-			Health:      healthCheck,
 			Repo:        repo,
 			WorkerNum:   i,
 		}

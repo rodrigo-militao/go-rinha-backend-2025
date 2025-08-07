@@ -21,7 +21,6 @@ var reqPayloadPool = sync.Pool{
 type Worker struct {
 	Client      *redis.Client
 	HostClients map[string]*fasthttp.HostClient
-	Health      *HealthCheckService
 	Repo        domain.PaymentRepository
 	WorkerNum   int
 }
@@ -50,38 +49,57 @@ func (w *Worker) Start(ctx context.Context) {
 			RequestedAt:   time.Now().UTC(),
 		}
 
-		processor := w.Health.GetCurrent()
-		if !w.processPayment(ctx, payment, processor) {
+		success := false
+		maxRetries := 3
+
+		for range maxRetries {
+			if w.processPayment(ctx, payment, "default") {
+				success = true
+				break
+			}
+			time.Sleep(3 * time.Millisecond)
+		}
+
+		if !success {
+			if w.processPayment(ctx, payment, "fallback") {
+				success = true
+			}
+		}
+
+		if !success {
 			w.Client.RPush(ctx, PAYMENTS_QUEUE, result[1])
-			reqPayloadPool.Put(payload)
-			continue
 		}
 
 		reqPayloadPool.Put(payload)
 	}
 }
 
-func (w *Worker) processPayment(ctx context.Context, payment domain.Payment, processor ProcessorStatus) bool {
+func (w *Worker) processPayment(ctx context.Context, payment domain.Payment, processorName string) bool {
+	client := w.HostClients[processorName]
+
 	req := fasthttp.AcquireRequest()
 	resp := fasthttp.AcquireResponse()
 	defer fasthttp.ReleaseRequest(req)
 	defer fasthttp.ReleaseResponse(resp)
 
-	req.SetRequestURI(processor.URL)
+	uri := "http://" + client.Addr + "/payments"
+
+	req.SetRequestURI(uri)
 	req.Header.SetMethod(fasthttp.MethodPost)
 	req.Header.SetContentType("application/json")
 
-	reqPayload := &ReqPayload{
+	payload := reqPayloadPool.Get().(*ReqPayload)
+	*payload = ReqPayload{
 		CorrelationId: payment.CorrelationId,
 		Amount:        payment.Amount,
 		RequestedAt:   payment.RequestedAt,
 	}
-	body, _ := reqPayload.MarshalJSON()
-	req.SetBody(body)
-
-	client := w.HostClients[processor.Service]
+	body, _ := payload.MarshalJSON()
+	reqPayloadPool.Put(payload)
+	req.SetBodyRaw(body)
 
 	if err := client.Do(req, resp); err != nil {
+		log.Printf("Error sending request: %v", err)
 		return false
 	}
 
@@ -90,7 +108,7 @@ func (w *Worker) processPayment(ctx context.Context, payment domain.Payment, pro
 		return false
 	}
 
-	payment.Processor = processor.Service
+	payment.Processor = processorName
 	w.Repo.StorePayment(ctx, payment)
 	return true
 }
