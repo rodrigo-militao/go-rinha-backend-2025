@@ -2,16 +2,18 @@ package http
 
 import (
 	"rinha-golang/internal/application"
+	"rinha-golang/internal/domain"
 
 	"github.com/buaazp/fasthttprouter"
 	"github.com/valyala/fasthttp"
 )
 
 func SetupRoutes(
-	processPaymentUC *application.ProcessPaymentUseCase,
-	getSummaryUC *application.GetSummaryUseCase) fasthttp.RequestHandler {
+	repository domain.PaymentRepository,
+	getSummaryUC *application.GetSummaryUseCase,
+) fasthttp.RequestHandler {
 
-	handler := &Handler{ProcessPaymentUC: processPaymentUC, GetSummaryUC: getSummaryUC}
+	handler := &Handler{Repo: repository, GetSummaryUC: getSummaryUC}
 
 	router := fasthttprouter.New()
 	router.POST("/payments", handler.HandlePayments)

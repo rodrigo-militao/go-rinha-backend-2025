@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"log"
+	"sync"
 	"time"
 
 	"os"
@@ -10,7 +11,6 @@ import (
 	"rinha-golang/internal/application"
 	"rinha-golang/internal/config"
 	http_infra "rinha-golang/internal/infra/http"
-	"sync"
 	"syscall"
 
 	redis_impl "rinha-golang/internal/infra/redis"
@@ -28,15 +28,15 @@ func main() {
 
 	workerCount := cfg.Workers
 
-	// redisClient := redis.NewClient(&redis.Options{
-	// 	Addr:         cfg.RedisURL,
-	// 	PoolSize:     200,
-	// 	MinIdleConns: 100,
-	// })
-
 	redisClient := redis.NewClient(&redis.Options{
-		Network: "unix",
-		Addr:    "/tmp/redis.sock",
+		Network:      "unix",
+		Addr:         "/tmp/redis.sock",
+		PoolSize:     512,
+		MinIdleConns: 128,
+		PoolTimeout:  1 * time.Second,
+		ReadTimeout:  500 * time.Millisecond,
+		WriteTimeout: 500 * time.Millisecond,
+		DB:           0,
 	})
 
 	if workerCount > 0 {
@@ -51,15 +51,11 @@ func main() {
 func startAPI(ctx context.Context, redisClient *redis.Client, cfg config.Config) {
 	repo := redis_impl.NewRedisPaymentRepository(redisClient)
 
-	processPaymentUC := &application.ProcessPaymentUseCase{
-		Repo: repo,
-	}
-
 	getSummaryUC := &application.GetSummaryUseCase{
 		Repo: repo,
 	}
 
-	routes_handler := http_infra.SetupRoutes(processPaymentUC, getSummaryUC)
+	routes_handler := http_infra.SetupRoutes(repo, getSummaryUC)
 
 	server := &fasthttp.Server{
 		Handler:     routes_handler,
@@ -89,23 +85,24 @@ func startWorkers(ctx context.Context, redisClient *redis.Client, cfg config.Con
 
 	clients := map[string]*fasthttp.HostClient{
 		"default": {
-			Addr:                "payment-processor-default:8080",
-			MaxConns:            1024,
-			MaxIdleConnDuration: 5 * time.Second,
-			ReadTimeout:         3 * time.Second,
-			WriteTimeout:        3 * time.Second,
+			Addr:                          "payment-processor-default:8080",
+			MaxConns:                      1024,
+			MaxIdleConnDuration:           30 * time.Second,
+			ReadTimeout:                   3 * time.Second,
+			WriteTimeout:                  3 * time.Second,
+			DisableHeaderNamesNormalizing: true,
+			DisablePathNormalizing:        true,
 		},
 		"fallback": {
-			Addr:                "payment-processor-fallback:8080",
-			MaxConns:            1024,
-			MaxIdleConnDuration: 5 * time.Second,
-			ReadTimeout:         3 * time.Second,
-			WriteTimeout:        3 * time.Second,
+			Addr:                          "payment-processor-fallback:8080",
+			MaxConns:                      1024,
+			MaxIdleConnDuration:           30 * time.Second,
+			ReadTimeout:                   3 * time.Second,
+			WriteTimeout:                  3 * time.Second,
+			DisableHeaderNamesNormalizing: true,
+			DisablePathNormalizing:        true,
 		},
 	}
-
-	// healthCheck := redis_impl.NewHealthCheckService(redisClient, cfg)
-	// go healthCheck.Start()
 
 	repo := redis_impl.NewRedisPaymentRepository(redisClient)
 

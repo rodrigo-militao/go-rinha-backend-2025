@@ -14,7 +14,7 @@ import (
 
 var reqPayloadPool = sync.Pool{
 	New: func() any {
-		return new(ReqPayload)
+		return new(domain.Payment)
 	},
 }
 
@@ -34,26 +34,19 @@ func (w *Worker) Start(ctx context.Context) {
 			continue
 		}
 
-		payload := reqPayloadPool.Get().(*ReqPayload)
-		*payload = ReqPayload{}
+		data := []byte(result[1])
+		payment := reqPayloadPool.Get().(*domain.Payment)
 
-		if err := payload.UnmarshalJSON([]byte(result[1])); err != nil {
-			log.Printf("[Worker %d] Failed to unmarshal payment: %v", w.WorkerNum, err)
-			reqPayloadPool.Put(payload)
+		if err := payment.UnmarshalJSON(data); err != nil {
+			reqPayloadPool.Put(payment)
 			continue
-		}
-
-		payment := domain.Payment{
-			CorrelationId: payload.CorrelationId,
-			Amount:        payload.Amount,
-			RequestedAt:   time.Now().UTC(),
 		}
 
 		success := false
 		maxRetries := 3
 
 		for range maxRetries {
-			if w.processPayment(ctx, payment, "default") {
+			if w.processPayment(ctx, *payment, "default") {
 				success = true
 				break
 			}
@@ -61,26 +54,22 @@ func (w *Worker) Start(ctx context.Context) {
 		}
 
 		if !success {
-			if w.processPayment(ctx, payment, "fallback") {
+			if w.processPayment(ctx, *payment, "fallback") {
 				success = true
 			}
 		}
 
-		if !success {
-			w.Client.RPush(ctx, PAYMENTS_QUEUE, result[1])
-		}
-
-		reqPayloadPool.Put(payload)
+		reqPayloadPool.Put(payment)
 	}
 }
 
 func (w *Worker) processPayment(ctx context.Context, payment domain.Payment, processorName string) bool {
+	payment.Processor = processorName
+	payment.RequestedAt = time.Now().UTC()
 	client := w.HostClients[processorName]
 
 	req := fasthttp.AcquireRequest()
 	resp := fasthttp.AcquireResponse()
-	defer fasthttp.ReleaseRequest(req)
-	defer fasthttp.ReleaseResponse(resp)
 
 	uri := "http://" + client.Addr + "/payments"
 
@@ -88,27 +77,21 @@ func (w *Worker) processPayment(ctx context.Context, payment domain.Payment, pro
 	req.Header.SetMethod(fasthttp.MethodPost)
 	req.Header.SetContentType("application/json")
 
-	payload := reqPayloadPool.Get().(*ReqPayload)
-	*payload = ReqPayload{
-		CorrelationId: payment.CorrelationId,
-		Amount:        payment.Amount,
-		RequestedAt:   payment.RequestedAt,
-	}
-	body, _ := payload.MarshalJSON()
-	reqPayloadPool.Put(payload)
+	body, _ := payment.MarshalJSON()
 	req.SetBodyRaw(body)
 
 	if err := client.Do(req, resp); err != nil {
-		log.Printf("Error sending request: %v", err)
+		fasthttp.ReleaseRequest(req)
+		fasthttp.ReleaseResponse(resp)
 		return false
 	}
 
-	status := resp.StatusCode()
-	if status < 200 || status >= 300 {
-		return false
-	}
+	ok := resp.StatusCode() >= 200 && resp.StatusCode() < 300
+	fasthttp.ReleaseRequest(req)
+	fasthttp.ReleaseResponse(resp)
 
-	payment.Processor = processorName
-	w.Repo.StorePayment(ctx, payment)
-	return true
+	if ok {
+		w.Repo.StorePayment(ctx, payment.CorrelationId, body)
+	}
+	return ok
 }

@@ -3,6 +3,7 @@ package http
 import (
 	"log"
 	"rinha-golang/internal/application"
+	"rinha-golang/internal/domain"
 	"time"
 
 	json "github.com/json-iterator/go"
@@ -11,8 +12,8 @@ import (
 )
 
 type Handler struct {
-	ProcessPaymentUC *application.ProcessPaymentUseCase
-	GetSummaryUC     *application.GetSummaryUseCase
+	Repo         domain.PaymentRepository
+	GetSummaryUC *application.GetSummaryUseCase
 }
 
 type paymentRequest struct {
@@ -21,7 +22,9 @@ type paymentRequest struct {
 }
 
 func (h *Handler) HandlePayments(ctx *fasthttp.RequestCtx) {
-	h.ProcessPaymentUC.Execute(ctx, ctx.Request.Body())
+	body := append([]byte(nil), ctx.Request.Body()...)
+	h.Repo.AddToStream(ctx, body)
+
 	ctx.SetStatusCode(fasthttp.StatusCreated)
 }
 
@@ -63,7 +66,7 @@ func (h *Handler) HandleHealth(ctx *fasthttp.RequestCtx) {
 }
 
 func (h *Handler) PurgePayments(ctx *fasthttp.RequestCtx) {
-	h.ProcessPaymentUC.PurgePayments(ctx)
+	h.Repo.PurgePayments(ctx)
 
 	ctx.SetContentType("application/json")
 	ctx.SetStatusCode(fasthttp.StatusOK)

@@ -24,12 +24,8 @@ func (r *RedisPaymentRepository) AddToStream(ctx context.Context, data []byte) {
 	r.client.LPush(ctx, PAYMENTS_QUEUE, data)
 }
 
-func (r *RedisPaymentRepository) StorePayment(ctx context.Context, payment domain.Payment) {
-	paymentJSON, err := payment.MarshalJSON()
-	if err != nil {
-		return
-	}
-	r.client.HSet(ctx, PAYMENTS_HASH, payment.CorrelationId, paymentJSON)
+func (r *RedisPaymentRepository) StorePayment(ctx context.Context, correlationId string, data []byte) {
+	r.client.HSet(ctx, PAYMENTS_HASH, correlationId, data)
 }
 
 func (r *RedisPaymentRepository) GetAllPayments(ctx context.Context) ([]domain.Payment, error) {
