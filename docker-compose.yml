@@ -1,14 +1,16 @@
 services:
   nginx:
-    image: nginx:alpine
+    image: nginx:latest
     container_name: nginx-lb
     hostname: nginx-lb
     ports:
-      - 9999:9999
+      - 9999:80
     volumes:
       - ./nginx.conf:/etc/nginx/nginx.conf:ro
+      - memsock:/tmp
     networks:
       - backend
+      - payment-processor
     depends_on:
       - backend-1
       - backend-2
@@ -16,7 +18,8 @@ services:
       resources:
         limits:
           cpus: '0.2'
-          memory: '30MB'
+          memory: '210M'
+    restart: unless-stopped
 
   backend-1: &backend-template
     build: .
@@ -28,71 +31,30 @@ services:
       - backend
       - payment-processor
     volumes:
-      - redis-socket:/tmp
-    depends_on:
-      redis:
-        condition: service_healthy
+      - memsock:/tmp
     environment:
-      - LISTEN_ADDR=:8080
-      - REDIS_URL=redis:6379
       - PROCESSOR_DEFAULT_URL=http://payment-processor-default:8080
       - PROCESSOR_FALLBACK_URL=http://payment-processor-fallback:8080
-      - WORKERS=0
+      - SOCKET_PATH=/tmp/api1.sock
+      - OTHER_SOCKET_PATH=/tmp/api2.sock
+      - SUMMARY_URL=http://app2:8080/internal/payments-summary
     deploy:
       resources:
         limits:
-          cpus: '0.3'
-          memory: '50MB'
+          cpus: '0.6'
+          memory: '70MB'
+    restart: unless-stopped
 
   backend-2:
     ports:
       - "6062:6060"
-    <<: *backend-template
-
-  worker:
-    build: .
-    ports:
-      - "6063:6060"
     environment:
-      - LISTEN_ADDR=disabled
-      - REDIS_URL=redis:6379
       - PROCESSOR_DEFAULT_URL=http://payment-processor-default:8080
       - PROCESSOR_FALLBACK_URL=http://payment-processor-fallback:8080
-      - WORKERS=5
-    volumes:
-      - redis-socket:/tmp
-    depends_on:
-      redis:
-        condition: service_healthy
-    networks:
-      - backend
-      - payment-processor
-    deploy:
-      resources:
-        limits:
-          cpus: '0.4'
-          memory: '70MB'
-
-  redis:
-    image: redis:7-alpine
-    container_name: redis
-    hostname: redis
-    volumes:
-      - ./redis.conf:/usr/local/etc/redis/redis.conf
-      - redis-socket:/tmp
-    command: ["redis-server", "/usr/local/etc/redis/redis.conf"]
-    networks:
-      - backend
-    healthcheck:
-      test: ["CMD", "redis-cli", "ping"]
-      interval: 1s
-      timeout: 3s
-      retries: 30
-    deploy:
-      resources:
-        limits:
-          cpus: '0.3'
-          memory: '50MB'
+      - SOCKET_PATH=/tmp/api2.sock
+      - OTHER_SOCKET_PATH=/tmp/api1.sock  
+      - SUMMARY_URL=http://app1:8080/internal/payments-summary
+    <<: *backend-template
 
 networks:
   backend:
@@ -101,4 +63,4 @@ networks:
     external: true
 
 volumes:
-  redis-socket:
+  memsock:

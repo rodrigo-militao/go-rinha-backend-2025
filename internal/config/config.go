@@ -2,31 +2,23 @@ package config
 
 import (
 	"os"
-	"strconv"
 )
 
 type Config struct {
-	RedisURL             string
-	ListenAddr           string
 	ProcessorDefaultURL  string
 	ProcessorFallbackURL string
-	InstanceID           string
-	Workers              int
+	SocketPath           string
+	OtherSocketPath      string
+	SummaryUrl           string
 }
 
 func Load() Config {
-	workers := 0
-	if w := os.Getenv("WORKERS"); w != "" {
-		if n, err := strconv.Atoi(w); err == nil {
-			workers = n
-		}
-	}
 	return Config{
-		RedisURL:             getenv("REDIS_URL", "redis:6379"),
-		ListenAddr:           getenv("LISTEN_ADDR", ":8080"),
 		ProcessorDefaultURL:  getenv("PROCESSOR_DEFAULT_URL", "http://payment-processor-default:8080"),
 		ProcessorFallbackURL: getenv("PROCESSOR_FALLBACK_URL", "http://payment-processor-fallback:8080"),
-		Workers:              workers,
+		SocketPath:           getenv("SOCKET_PATH", ""),
+		OtherSocketPath:      getenv("OTHER_SOCKET_PATH", ""),
+		SummaryUrl:           getenv("SUMMARY_URL", ""),
 	}
 }
 

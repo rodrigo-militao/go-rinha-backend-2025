@@ -17,7 +17,89 @@ var (
 	_ easyjson.Marshaler
 )
 
-func easyjson377dcee4DecodeRinhaGolangInternalDomain(in *jlexer.Lexer, out *Payment) {
+func easyjson377dcee4DecodeRinhaGolangInternalDomain(in *jlexer.Lexer, out *PaymentRequest) {
+	isTopLevel := in.IsStart()
+	if in.IsNull() {
+		if isTopLevel {
+			in.Consumed()
+		}
+		in.Skip()
+		return
+	}
+	in.Delim('{')
+	for !in.IsDelim('}') {
+		key := in.UnsafeFieldName(false)
+		in.WantColon()
+		if in.IsNull() {
+			in.Skip()
+			in.WantComma()
+			continue
+		}
+		switch key {
+		case "correlationId":
+			out.CorrelationId = string(in.String())
+		case "amount":
+			out.Amount = float32(in.Float32())
+		case "RequestedAt":
+			if data := in.Raw(); in.Ok() {
+				in.AddError((out.RequestedAt).UnmarshalJSON(data))
+			}
+		default:
+			in.SkipRecursive()
+		}
+		in.WantComma()
+	}
+	in.Delim('}')
+	if isTopLevel {
+		in.Consumed()
+	}
+}
+func easyjson377dcee4EncodeRinhaGolangInternalDomain(out *jwriter.Writer, in PaymentRequest) {
+	out.RawByte('{')
+	first := true
+	_ = first
+	{
+		const prefix string = ",\"correlationId\":"
+		out.RawString(prefix[1:])
+		out.String(string(in.CorrelationId))
+	}
+	{
+		const prefix string = ",\"amount\":"
+		out.RawString(prefix)
+		out.Float32(float32(in.Amount))
+	}
+	{
+		const prefix string = ",\"RequestedAt\":"
+		out.RawString(prefix)
+		out.Raw((in.RequestedAt).MarshalJSON())
+	}
+	out.RawByte('}')
+}
+
+// MarshalJSON supports json.Marshaler interface
+func (v PaymentRequest) MarshalJSON() ([]byte, error) {
+	w := jwriter.Writer{}
+	easyjson377dcee4EncodeRinhaGolangInternalDomain(&w, v)
+	return w.Buffer.BuildBytes(), w.Error
+}
+
+// MarshalEasyJSON supports easyjson.Marshaler interface
+func (v PaymentRequest) MarshalEasyJSON(w *jwriter.Writer) {
+	easyjson377dcee4EncodeRinhaGolangInternalDomain(w, v)
+}
+
+// UnmarshalJSON supports json.Unmarshaler interface
+func (v *PaymentRequest) UnmarshalJSON(data []byte) error {
+	r := jlexer.Lexer{Data: data}
+	easyjson377dcee4DecodeRinhaGolangInternalDomain(&r, v)
+	return r.Error()
+}
+
+// UnmarshalEasyJSON supports easyjson.Unmarshaler interface
+func (v *PaymentRequest) UnmarshalEasyJSON(l *jlexer.Lexer) {
+	easyjson377dcee4DecodeRinhaGolangInternalDomain(l, v)
+}
+func easyjson377dcee4DecodeRinhaGolangInternalDomain1(in *jlexer.Lexer, out *Payment) {
 	isTopLevel := in.IsStart()
 	if in.IsNull() {
 		if isTopLevel {
@@ -56,7 +138,7 @@ func easyjson377dcee4DecodeRinhaGolangInternalDomain(in *jlexer.Lexer, out *Paym
 		in.Consumed()
 	}
 }
-func easyjson377dcee4EncodeRinhaGolangInternalDomain(out *jwriter.Writer, in Payment) {
+func easyjson377dcee4EncodeRinhaGolangInternalDomain1(out *jwriter.Writer, in Payment) {
 	out.RawByte('{')
 	first := true
 	_ = first
@@ -86,23 +168,23 @@ func easyjson377dcee4EncodeRinhaGolangInternalDomain(out *jwriter.Writer, in Pay
 // MarshalJSON supports json.Marshaler interface
 func (v Payment) MarshalJSON() ([]byte, error) {
 	w := jwriter.Writer{}
-	easyjson377dcee4EncodeRinhaGolangInternalDomain(&w, v)
+	easyjson377dcee4EncodeRinhaGolangInternalDomain1(&w, v)
 	return w.Buffer.BuildBytes(), w.Error
 }
 
 // MarshalEasyJSON supports easyjson.Marshaler interface
 func (v Payment) MarshalEasyJSON(w *jwriter.Writer) {
-	easyjson377dcee4EncodeRinhaGolangInternalDomain(w, v)
+	easyjson377dcee4EncodeRinhaGolangInternalDomain1(w, v)
 }
 
 // UnmarshalJSON supports json.Unmarshaler interface
 func (v *Payment) UnmarshalJSON(data []byte) error {
 	r := jlexer.Lexer{Data: data}
-	easyjson377dcee4DecodeRinhaGolangInternalDomain(&r, v)
+	easyjson377dcee4DecodeRinhaGolangInternalDomain1(&r, v)
 	return r.Error()
 }
 
 // UnmarshalEasyJSON supports easyjson.Unmarshaler interface
 func (v *Payment) UnmarshalEasyJSON(l *jlexer.Lexer) {
-	easyjson377dcee4DecodeRinhaGolangInternalDomain(l, v)
+	easyjson377dcee4DecodeRinhaGolangInternalDomain1(l, v)
 }

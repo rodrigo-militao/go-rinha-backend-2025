@@ -7,5 +7,5 @@ type Summary struct {
 
 type SummaryItem struct {
 	TotalRequests int     `json:"totalRequests"`
-	TotalAmount   float64 `json:"totalAmount"`
+	TotalAmount   float32 `json:"totalAmount"`
 }

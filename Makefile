@@ -16,13 +16,13 @@ up:
 
 	@echo "⏳ Aguardando serviços responderem..."
 	@until curl -s http://localhost:6061/debug/pprof/ > /dev/null; do echo "⌛ Esperando backend-1..."; sleep 1; done
-	@until curl -s http://localhost:6063/debug/pprof/ > /dev/null; do echo "⌛ Esperando worker..."; sleep 1; done
+# 	@until curl -s http://localhost:6063/debug/pprof/ > /dev/null; do echo "⌛ Esperando worker..."; sleep 1; done
 
 profile: up
 	@echo "📈 Iniciando coleta de profile em paralelo..."
 	go tool pprof -pdf http://localhost:6061/debug/pprof/profile?seconds=30 > profile-backend-1-$(NOW).pdf &
 	go tool pprof -pdf http://localhost:6062/debug/pprof/profile?seconds=30 > profile-backend-2-$(NOW).pdf &
-	go tool pprof -pdf http://localhost:6063/debug/pprof/profile?seconds=30 > profile-worker-$(NOW).pdf &
+# 	go tool pprof -pdf http://localhost:6063/debug/pprof/profile?seconds=30 > profile-worker-$(NOW).pdf &
 
 	@echo "🧪 Executando teste de carga com K6..."
 	k6 run $(K6_SCRIPT)
