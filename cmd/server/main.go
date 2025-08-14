@@ -31,9 +31,9 @@ func main() {
 	redisClient := redis.NewClient(&redis.Options{
 		Network:      "unix",
 		Addr:         "/tmp/redis.sock",
-		PoolSize:     512,
-		MinIdleConns: 128,
-		PoolTimeout:  1 * time.Second,
+		PoolSize:     1024,
+		MinIdleConns: 1024,
+		PoolTimeout:  5 * time.Second,
 		ReadTimeout:  500 * time.Millisecond,
 		WriteTimeout: 500 * time.Millisecond,
 		DB:           0,

@@ -43,7 +43,7 @@ func (w *Worker) Start(ctx context.Context) {
 		}
 
 		success := false
-		maxRetries := 3
+		maxRetries := 1
 
 		for range maxRetries {
 			if w.processPayment(ctx, *payment, "default") {
