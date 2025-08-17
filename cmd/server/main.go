@@ -7,6 +7,7 @@ import (
 	"net"
 	"os"
 	"path/filepath"
+	"strconv"
 	"sync"
 	"time"
 
@@ -173,7 +174,8 @@ func main() {
 		defer wg.Done()
 		worker.AddToQueue(pendingQueue, queue, &paymentPool, &BodyPool)
 	}()
-	numWorkers := 2
+
+	numWorkers, _ := strconv.Atoi(cfg.NumWorkers)
 	for i := 0; i < numWorkers; i++ {
 		wg.Add(1)
 		go func(workerID int) {

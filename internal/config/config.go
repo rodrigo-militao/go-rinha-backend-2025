@@ -10,6 +10,7 @@ type Config struct {
 	SocketPath           string
 	OtherSocketPath      string
 	SummaryUrl           string
+	NumWorkers           string
 }
 
 func Load() Config {
@@ -19,6 +20,7 @@ func Load() Config {
 		SocketPath:           getenv("SOCKET_PATH", ""),
 		OtherSocketPath:      getenv("OTHER_SOCKET_PATH", ""),
 		SummaryUrl:           getenv("SUMMARY_URL", ""),
+		NumWorkers:           getenv("NUM_WORKERS", "2"),
 	}
 }
 
