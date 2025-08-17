@@ -18,23 +18,28 @@ func NewMemDB() *MemDB {
 }
 
 func (s *MemDB) Put(processor int8, payment domain.PaymentRequest) {
+	s.mu.Lock()
 	s.data[processor] = append(s.data[processor], payment)
+	s.mu.Unlock()
 }
 
-func (s *MemDB) RangeQuery(key int8, fromTs, toTs int64) ([]int64, error) {
+// RangeQuerySummary evita criar slices grandes e já retorna os agregados
+func (s *MemDB) RangeQuerySummary(key int8, fromTs, toTs int64) (count int, total int64, err error) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+
 	values := s.data[key]
-	var amounts []int64
 
 	for _, p := range values {
 		timestamp := p.RequestedAt.UnixNano()
-
 		if timestamp >= fromTs && timestamp <= toTs {
-			amounts = append(amounts, int64(math.Round(float64(p.Amount*100))))
-
-		} else if timestamp > toTs {
-			break
+			amount := int64(math.Round(float64(p.Amount * 100)))
+			total += amount
+			count++
 		}
+		// else if timestamp > toTs {
+		// 	break
+		// }
 	}
-
-	return amounts, nil
+	return count, total, nil
 }

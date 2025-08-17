@@ -3,6 +3,7 @@ package application
 import (
 	"rinha-golang/internal/domain"
 	"rinha-golang/internal/infra/database"
+	"sync"
 	"time"
 )
 
@@ -33,31 +34,25 @@ func GetSummary(
 		}
 	}
 
-	data, err := db.RangeQuery(0, from, to)
+	var wg sync.WaitGroup
+	wg.Add(2)
 
-	if err != nil {
-		return
-	}
+	// processa Default em paralelo
+	go func() {
+		count, total, _ := db.RangeQuerySummary(0, from, to)
+		summary.Default.TotalRequests = count
+		summary.Default.TotalAmount = float32(total) / 100
+		wg.Done()
+	}()
 
-	summary.Default.TotalRequests = len(data)
-	var total int64
-	for _, amount := range data {
-		total += amount
-	}
-	summary.Default.TotalAmount = float32(total) / 100
+	// processa Fallback em paralelo
+	go func() {
+		count, total, _ := db.RangeQuerySummary(2, from, to)
+		summary.Fallback.TotalRequests = count
+		summary.Fallback.TotalAmount = float32(total) / 100
+		wg.Done()
+	}()
 
-	data, err = db.RangeQuery(2, from, to)
-
-	if err != nil {
-		return
-	}
-
-	var total1 int64
-	for _, amount := range data {
-		total1 += amount
-	}
-	summary.Fallback.TotalRequests = len(data)
-	summary.Fallback.TotalAmount = float32(total1) / 100
+	wg.Wait()
 	return
-
 }

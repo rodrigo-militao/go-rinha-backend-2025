@@ -14,8 +14,8 @@ type Config struct {
 
 func Load() Config {
 	return Config{
-		ProcessorDefaultURL:  getenv("PROCESSOR_DEFAULT_URL", "http://payment-processor-default:8080"),
-		ProcessorFallbackURL: getenv("PROCESSOR_FALLBACK_URL", "http://payment-processor-fallback:8080"),
+		ProcessorDefaultURL:  getenv("PROCESSOR_DEFAULT_URL", "http://payment-processor-default:8080/payments"),
+		ProcessorFallbackURL: getenv("PROCESSOR_FALLBACK_URL", "http://payment-processor-fallback:8080/payments"),
 		SocketPath:           getenv("SOCKET_PATH", ""),
 		OtherSocketPath:      getenv("OTHER_SOCKET_PATH", ""),
 		SummaryUrl:           getenv("SUMMARY_URL", ""),

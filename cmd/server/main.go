@@ -2,11 +2,9 @@ package main
 
 import (
 	"bytes"
-	"context"
 	"encoding/json"
 	"fmt"
 	"net"
-	"net/http"
 	"os"
 	"path/filepath"
 	"sync"
@@ -27,15 +25,16 @@ var pendingQueue chan []byte
 var db = database.NewMemDB()
 var cfg = config.Load()
 
-var unixClient = &http.Client{
-	Transport: &http.Transport{
-		DialContext: func(ctx context.Context, network, addr string) (net.Conn, error) {
-			return net.Dial("unix", cfg.OtherSocketPath)
-		},
-		MaxIdleConns:    100,
-		IdleConnTimeout: 90 * time.Second,
+var unixClient = fasthttp.Client{
+	Dial: func(addr string) (net.Conn, error) {
+		return net.Dial("unix", cfg.OtherSocketPath)
 	},
-	Timeout: 3 * time.Second,
+	ReadTimeout:                   3 * time.Second,
+	WriteTimeout:                  3 * time.Second,
+	MaxIdleConnDuration:           1 * time.Hour,
+	DisableHeaderNamesNormalizing: true,
+	DisablePathNormalizing:        true,
+	NoDefaultUserAgentHeader:      true,
 }
 
 var BodyPool = sync.Pool{
@@ -87,21 +86,25 @@ func GetSummary(ctx *fasthttp.RequestCtx) {
 		return
 	}
 
-	req, err := http.NewRequest("GET", cfg.SummaryUrl, nil)
-	values := req.URL.Query()
-	values.Add("from", fromStr)
-	values.Add("to", toStr)
+	req := fasthttp.AcquireRequest()
+	resp := fasthttp.AcquireResponse()
 
-	req.URL.RawQuery = values.Encode()
+	req.SetRequestURI(cfg.SummaryUrl)
+	req.Header.SetMethod(fasthttp.MethodGet)
 
-	res, err := unixClient.Do(req)
+	req.URI().QueryArgs().Add("from", fromStr)
+	req.URI().QueryArgs().Add("to", toStr)
+
+	err = unixClient.Do(req, resp)
 	if err != nil {
 		ctx.SetStatusCode(fasthttp.StatusInternalServerError)
 		ctx.SetBodyString(`{"error": "internal error"}`)
+		fasthttp.ReleaseRequest(req)
+		fasthttp.ReleaseResponse(resp)
 		return
 	}
-	defer res.Body.Close()
-	dec := json.NewDecoder(res.Body)
+
+	dec := json.NewDecoder(bytes.NewReader(resp.Body()))
 	if err := dec.Decode(&summaryOther); err != nil {
 		ctx.SetStatusCode(fasthttp.StatusInternalServerError)
 		ctx.SetBodyString(`{"error": "internal error"}`)
@@ -114,7 +117,7 @@ func GetSummary(ctx *fasthttp.RequestCtx) {
 	summary.Fallback.TotalRequests += summaryOther.Fallback.TotalRequests
 	summary.Fallback.TotalAmount += summaryOther.Fallback.TotalAmount
 
-	resp, err := json.Marshal(summary)
+	res, err := json.Marshal(summary)
 	if err != nil {
 		fmt.Println(err.Error())
 		ctx.SetStatusCode(fasthttp.StatusInternalServerError)
@@ -124,7 +127,7 @@ func GetSummary(ctx *fasthttp.RequestCtx) {
 
 	ctx.SetContentType("application/json")
 	ctx.SetStatusCode(fasthttp.StatusOK)
-	ctx.SetBody(resp)
+	ctx.SetBody(res)
 }
 
 func handler(ctx *fasthttp.RequestCtx) {
@@ -138,6 +141,9 @@ func handler(ctx *fasthttp.RequestCtx) {
 		GetSummary(ctx)
 	case bytes.Equal(ctx.Path(), []byte("/internal/payments-summary")):
 		GetSummaryInternal(ctx)
+	case bytes.Equal(ctx.Path(), []byte("/health")):
+		ctx.SetStatusCode(fasthttp.StatusOK)
+		ctx.SetBodyString("OK")
 	}
 }
 
@@ -147,45 +153,38 @@ func main() {
 		socketPath = filepath.Join("/tmp", cfg.SocketPath)
 	}
 
-	// Remove socket antigo se existir
 	if err := os.Remove(socketPath); err != nil && !os.IsNotExist(err) {
 		panic(err)
 	}
-	clients := map[string]*fasthttp.HostClient{
-		"default": {
-			Addr:                          "payment-processor-default:8080",
-			MaxConns:                      1024,
-			MaxIdleConnDuration:           30 * time.Second,
-			ReadTimeout:                   3 * time.Second,
-			WriteTimeout:                  3 * time.Second,
-			DisableHeaderNamesNormalizing: true,
-			DisablePathNormalizing:        true,
-		},
-		"fallback": {
-			Addr:                          "payment-processor-fallback:8080",
-			MaxConns:                      1024,
-			MaxIdleConnDuration:           30 * time.Second,
-			ReadTimeout:                   3 * time.Second,
-			WriteTimeout:                  3 * time.Second,
-			DisableHeaderNamesNormalizing: true,
-			DisablePathNormalizing:        true,
-		},
-	}
-
 	var paymentPool = sync.Pool{
 		New: func() any {
 			return new(domain.PaymentRequest)
 		},
 	}
 
-	pendingQueue = make(chan []byte, 20_000)
-	queue := make(chan *domain.PaymentRequest, 20_000)
+	pendingQueue = make(chan []byte, 30_000)
+	queue := make(chan *domain.PaymentRequest, 30_000)
 
-	go worker.AddToQueue(pendingQueue, queue, &paymentPool, &BodyPool)
-	go worker.WorkerPayments(db, clients, queue, &paymentPool)
+	// go worker.AddToQueue(pendingQueue, queue, &paymentPool, &BodyPool)
+	// go worker.WorkerPayments(db, queue, &paymentPool, cfg)
+	var wg sync.WaitGroup
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		worker.AddToQueue(pendingQueue, queue, &paymentPool, &BodyPool)
+	}()
+	numWorkers := 2
+	for i := 0; i < numWorkers; i++ {
+		wg.Add(1)
+		go func(workerID int) {
+			defer wg.Done()
+			worker.WorkerPayments(db, queue, &paymentPool, cfg)
+		}(i + 1)
+	}
 
 	srv := &fasthttp.Server{
 		Handler:                       handler,
+		MaxConnsPerIP:                 0,
 		DisableHeaderNamesNormalizing: true,
 		DisablePreParseMultipartForm:  true,
 	}
@@ -195,5 +194,7 @@ func main() {
 	if err != nil {
 		panic(err)
 	}
+
+	wg.Wait()
 
 }

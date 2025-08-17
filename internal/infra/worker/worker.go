@@ -1,6 +1,7 @@
 package worker
 
 import (
+	"rinha-golang/internal/config"
 	"rinha-golang/internal/domain"
 	"rinha-golang/internal/infra/database"
 	"rinha-golang/internal/infra/gateway"
@@ -33,15 +34,59 @@ func AddToQueue(
 
 func WorkerPayments(
 	db *database.MemDB,
-	hostClients map[string]*fasthttp.HostClient,
 	queue chan *domain.PaymentRequest,
-	paymentPool *sync.Pool) {
+	paymentPool *sync.Pool,
+	cfg config.Config) {
+	// httpClient := &http.Client{Timeout: 4 * time.Second}
+	// httpClient := &fasthttp.Client{
+	// 	ReadTimeout:                   5 * time.Second,
+	// 	WriteTimeout:                  5 * time.Second,
+	// 	MaxIdleConnDuration:           1 * time.Hour,
+	// 	NoDefaultUserAgentHeader:      true, // Don't send: User-Agent: fasthttp
+	// 	DisableHeaderNamesNormalizing: true, // If you set the case on your headers correctly you can enable this
+	// 	DisablePathNormalizing:        true,
+	// 	Dial: (&fasthttp.TCPDialer{
+	// 		Concurrency:      4096,
+	// 		DNSCacheDuration: time.Hour,
+	// 	}).Dial,
+	// }
+
+	httpClient := map[string]*fasthttp.HostClient{
+		"default": {
+			Addr:                          "payment-processor-default:8080",
+			MaxConns:                      4096,
+			MaxIdleConnDuration:           1 * time.Hour,
+			ReadTimeout:                   3 * time.Second,
+			WriteTimeout:                  3 * time.Second,
+			DisableHeaderNamesNormalizing: true,
+			DisablePathNormalizing:        true,
+			NoDefaultUserAgentHeader:      true,
+			Dial: (&fasthttp.TCPDialer{
+				Concurrency:      4096,
+				DNSCacheDuration: time.Hour,
+			}).Dial,
+		},
+		"fallback": {
+			Addr:                          "payment-processor-fallback:8080",
+			MaxConns:                      4096,
+			MaxIdleConnDuration:           1 * time.Hour,
+			ReadTimeout:                   3 * time.Second,
+			WriteTimeout:                  3 * time.Second,
+			DisableHeaderNamesNormalizing: true,
+			DisablePathNormalizing:        true,
+			NoDefaultUserAgentHeader:      true,
+			Dial: (&fasthttp.TCPDialer{
+				Concurrency:      4096,
+				DNSCacheDuration: time.Hour,
+			}).Dial,
+		},
+	}
 
 	for {
 		payment := <-queue
-		processor := processPayment(hostClients, payment)
+		processor := processPayment(httpClient, payment, cfg)
 		if processor == -1 {
-			// queue <- payment
+			queue <- payment
 			continue
 		}
 		db.Put(processor, *payment)
@@ -50,15 +95,25 @@ func WorkerPayments(
 }
 
 func processPayment(
-	hostClients map[string]*fasthttp.HostClient,
+	// client *http.Client,
+	// client *fasthttp.Client,
+	clients map[string]*fasthttp.HostClient,
 	p *domain.PaymentRequest,
+	cfg config.Config,
 ) int8 {
-	defaultSuccess := gateway.PostPayment(hostClients["default"], p)
-	if defaultSuccess {
-		return int8(0)
-	}
+	maxRetries := 3
 
-	fallbackSuccess := gateway.PostPayment(hostClients["fallback"], p)
+	for range maxRetries {
+		defaultSuccess := gateway.PostPayment(clients["default"], p)
+		if defaultSuccess {
+			return int8(0)
+		}
+		time.Sleep(3 * time.Millisecond)
+	}
+	// defaultSuccess := gateway.PostPayment(client, p, cfg.ProcessorDefaultURL)
+
+	// fallbackSuccess := gateway.PostPayment(client, p, cfg.ProcessorFallbackURL)
+	fallbackSuccess := gateway.PostPayment(clients["fallback"], p)
 	if fallbackSuccess {
 		return int8(1)
 	}
