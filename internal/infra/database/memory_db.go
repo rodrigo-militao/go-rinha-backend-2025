@@ -25,8 +25,6 @@ func (s *MemDB) Put(processor int8, payment domain.PaymentRequest) {
 
 // RangeQuerySummary evita criar slices grandes e já retorna os agregados
 func (s *MemDB) RangeQuerySummary(key int8, fromTs, toTs int64) (count int, total int64, err error) {
-	s.mu.RLock()
-
 	values := s.data[key]
 
 	for i := 0; i < len(values); i++ {
@@ -42,6 +40,5 @@ func (s *MemDB) RangeQuerySummary(key int8, fromTs, toTs int64) (count int, tota
 		// }
 	}
 
-	s.mu.RUnlock()
 	return count, total, nil
 }
