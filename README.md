@@ -1,10 +1,12 @@
 # Rinha de Backend 2025 - Implementação em Go
 
-Esta é a minha submissão para a 3ª edição da Rinha de Backend, desenvolvida em Go. O objetivo foi construir uma API de pagamentos resiliente e de alta performance, explorando padrões de arquitetura de software e otimizações avançadas.
+Esta é a minha submissão para a 3ª edição da Rinha de Backend, desenvolvida em Go.  
+O objetivo foi construir uma API de pagamentos resiliente e de altíssima performance, explorando padrões de arquitetura assíncrona, uso de banco em memória customizado e técnicas avançadas de otimização.
 
 ## 🏛️ Arquitetura
 
-A arquitetura é **assíncrona**, com duas instâncias da API Go e uma instância dedicada para o pool de workers. A comunicação é feita via Redis (fila) e o tráfego é balanceado com NGINX.
+A arquitetura é **assíncrona**, com duas instâncias da API Go e workers embutidos para processamento paralelo.  
+O tráfego é balanceado com **HaProxy**, e os resultados são armazenados em um **banco em memória thread-safe** (sem Redis).
 
 ```mermaid
 graph TD
@@ -13,16 +15,12 @@ graph TD
     end
 
     subgraph Aplicação
-        B(Nginx Load Balancer)
+        B(HaProxy Load Balancer)
         C1[API Go - Instância 1]
         C2[API Go - Instância 2]
-        D[Worker Go - Pool Dedicado]
-        I["Health Check Service<br/>(a cada 6s)"]
-    end
-
-    subgraph Redis
-        E[payments_queue - List]
-        F[healthy_processor_status - Hash]
+        D1["Worker Pool<br/>(Instância 1)"]
+        D2["Worker Pool<br/>(Instância 2)"]
+        F["In-Memory DB<br/>(Thread-Safe RWMutex)"]
     end
 
     subgraph Processadores
@@ -33,53 +31,59 @@ graph TD
     A -->|HTTP POST /payments| B
     B --> C1
     B --> C2
-    C1 -->|LPUSH| E
-    C2 -->|LPUSH| E
-    D -->|BLPOP/Processa| E
-    D --> G
-    D --> H
+    C1 -->|Enfileira em memória| D1
+    C2 -->|Enfileira em memória| D2
 
-    I -->|Verifica '/health'| G
-    I -->|"Salva processor<br/>ativo"| F
-    D -->|"Consulta processor<br/>ativo"| F
+    D1 -->|Processa| G
+    D2 -->|Processa| G
+    D1 -->|Fallback| H
+    D2 -->|Fallback| H
+
+    D1 -->|Salva agregados| F
+    D2 -->|Salva agregados| F
+
+    C1 -->|Consulta| F
+    C2 -->|Consulta| F
 ```
 
 ## ✨ Tecnologias Utilizadas
 
 * **Linguagem:** Go 1.22+
 * **Framework HTTP:** [fasthttp](https://github.com/valyala/fasthttp)
-* **Cache / Banco de Dados de Estado:** Redis 7
-* **Fila de Mensagens:** Redis (com listas)
-* **Balanceador de Carga:** NGINX
-* **Observabilidade:** [pprof](https://pkg.go.dev/net/http/pprof)
-* **Testes de carga:** [k6](https://k6.io)
+* **Banco de Dados:** In-Memory DB customizado (sync.RWMutex + slice)
+* **Fila de Mensagens:** Channels (chan []byte + chan *PaymentRequest)
+* **Balanceador de Carga:** HaProxy
+* **Observabilidade:** pprof
+* **Testes de carga:** k6
 * **Ambiente:** Docker & Docker Compose
 
 
 ## ⚙️ Estratégias e Otimizações
 
 * **API desacoplada da lógica pesada:** apenas enfileira requisições com latência <1ms.
-* **Fila Redis (LPUSH + RPOPLPUSH):** sem bloqueio, com retry simples e reprocessamento.
-* **Workers dedicados:** escalam de forma independente com `goroutines` e pooling de conexões HTTP.
-* **Health Check dinâmico:** verifica apenas o processador default. Usa `fallback` apenas se necessário.
-* **HTTP ultra-performático:** uso de `fasthttp` e `HostClient` para latência mínima e alta reutilização de conexão.
-* **Idempotência:** garantida via Redis `HSET` com chave `correlationId`.
-* **Resumo de pagamentos:** calculado com agregação em memória via Redis Hashes (por segundo).
-* **Observabilidade:** pprof ativado por padrão para profiling durante carga.
+* **Fila em memória:** baseada em channels para eliminar hops de rede (sem Redis).
+* **Workers otimizados:** pool de goroutines processando pagamentos em paralelo com retry simples.
+* **Banco em memória customizado:** usa slices + RWMutex para leituras concorrentes seguras.
+* **Agregação em tempo real:** queries de resumo (/payments-summary) calculadas diretamente sobre os dados em memória.
+* **Pooling agressivo:** uso de sync.Pool para objetos (PaymentRequest, buffers JSON).
+* **HTTP ultra-performático:** fasthttp.HostClient com reuso de conexões e latência mínima.
+* **Observabilidade:** pprof habilitado para profiling e tunning sob carga.
 
 ## 📊 Resultados da Submissão
 
-**🏁 Total de pagamentos processados:** 16.749
+**🏁 Total de pagamentos processados:** 16.625
 
-* ✅ **p99:** `4.58ms`
-* ✅ **Bonus de performance:** `+13%`
+* ✅ **p99:** `1.68ms`
+* ✅ **Bonus de performance:** `+19%`
 * ✅ **Inconsistências:** `0`
-* ✅ **Lag:** `0` (nenhuma perda de pagamentos)
-* 💰 **Lucro líquido final:** `R$ 350.029,26`
-* 🏦 **Pagamentos default:** 13.292 pagamentos
-* ⚠️ **Pagamentos fallback:** 3.457 pagamentos
+* ⚠️ **Lag:** `128` (pagamentos ainda na fila no fim do teste)
+* 💰 **Lucro líquido final:** `R$ 374.011,79`
+* 🏦 **Pagamentos default:** 16.625 pagamentos
+* 🚫 **Pagamentos fallback:** 0
 
-> Esta pontuação representa um dos melhores desempenhos já atingidos com Redis + Go no desafio.
+
+> Uma das melhores execuções até agora usando apenas Go + in-memory DB, sem Redis.
+A eliminação de hops de rede trouxe p99 extremamente baixo, com performance consistente.
 
 ## 🚀 Como Executar Localmente
 
@@ -100,8 +104,9 @@ k6 run rinha-test/rinha.js
 * `cmd/server/main.go` → Ponto de entrada da aplicação.
 * `internal/domain` → Entidades e interfaces.
 * `internal/application` → Casos de uso.
-* `internal/infra/http` → Rotas HTTP.
-* `internal/infra/redis` → Implementações com Redis.
+* `internal/infra/database` → Banco em memória (MemDB).
+* `internal/infra/worker` → Fila e workers assíncronos.
+* `internal/infra/gateway` → Comunicação com processadores de pagamento.
 * `internal/pprof` → Exposição do servidor pprof para profiling.
 
 ## 📈 Observabilidade (pprof)
@@ -124,7 +129,7 @@ Para visualizar:
 go tool pprof -http=:8081 profile.pb.gz
 ```
 
-Ou, se preferir um relatório em pdf após a execução, basta descomentar as linhas `21` a `25` no script `./run-tests.sh`.
+Ou, se preferir um relatório em pdf após a execução, basta utilizar o comando `make` no terminal.
 
 ## 👤 Autor
 
