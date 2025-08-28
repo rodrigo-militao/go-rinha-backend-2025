@@ -16,7 +16,7 @@ sleep 5
 
 # Executar os testes K6
 echo "🧪 Rodando testes de performance com K6..."
-k6 run ~/dev/rinha-de-backend-2025/rinha-test/rinha.js
+k6 run ~/dev/rinha-de-backend-2025/rinha-test/rinha-final.js
 
 # echo ">>> Capturando profile do backend-1"
 # go tool pprof -pdf http://localhost:6061/debug/pprof/profile?seconds=30 > profile-backend-1.pdf

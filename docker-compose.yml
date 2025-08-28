@@ -37,7 +37,7 @@ services:
       - SOCKET_PATH=/tmp/api1.sock
       - OTHER_SOCKET_PATH=/tmp/api2.sock
       - SUMMARY_URL=http://app2:8080/internal/payments-summary
-      - NUM_WORKERS=3
+      - NUM_WORKERS=40
     deploy:
       resources:
         limits:
@@ -52,7 +52,7 @@ services:
       - SOCKET_PATH=/tmp/api2.sock
       - OTHER_SOCKET_PATH=/tmp/api1.sock  
       - SUMMARY_URL=http://app1:8080/internal/payments-summary
-      - NUM_WORKERS=3
+      - NUM_WORKERS=40
     <<: *backend-template
 
 networks:
